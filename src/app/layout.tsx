@@ -8,7 +8,7 @@ const sans = Inter({ subsets: ["latin"], weight: ["400", "500"], variable: "--fo
 const mono = IBM_Plex_Mono({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-mono", display: "swap" });
 
 export const metadata = {
-  title: "YieldSeeker · Stellar",
+  title: "YieldPilot · Stellar",
   description: "An autonomous agent that finds the highest safe yield for idle USDC on Stellar.",
 };
 

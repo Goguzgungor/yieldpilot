@@ -20,6 +20,8 @@ import { MongoClient, type Db as MongoNativeDb, type Document } from "mongodb";
  */
 export function mongoDbName(env: Record<string, string | undefined> = process.env): string {
   const v = env.MONGODB_DB?.trim();
+  // The production database keeps its pre-rename name: renaming it would
+  // point the app at an empty database.
   return v ? v : "yieldseeker";
 }
 

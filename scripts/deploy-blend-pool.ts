@@ -72,7 +72,7 @@ const COMET_INIT_LP = BigInt(100e7); // new_c_pool always mints exactly 100 LP
 // keep a tiny buffer; the actual deposit is clamped to the whale's real LP balance.
 const BACKSTOP_DEPOSIT_LP = BigInt(99e7);
 
-const POOL_NAME = "YieldSeeker";
+const POOL_NAME = "YieldPilot";
 const BACKSTOP_TAKE_RATE = 0.10e7; // 10%
 const MAX_POSITIONS = 4;
 const MIN_COLLATERAL = 0n;

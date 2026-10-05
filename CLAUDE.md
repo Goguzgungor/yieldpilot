@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-**YieldSeeker** — an autonomous DeFi yield agent on Stellar (Next.js 16 App Router). One backend agent continuously scans Blend V2 (+ DeFindex) yield pools, scores them against a risk tolerance, deterministically picks the highest-APY eligible pool, then supplies each registered user's idle USDC into it — executing **per-user** through OpenZeppelin smart accounts where the agent is a restricted, spending-capped policy signer (the "ARMA" model).
+**YieldPilot** — an autonomous DeFi yield agent on Stellar (Next.js 16 App Router). One backend agent continuously scans Blend V2 (+ DeFindex) yield pools, scores them against a risk tolerance, deterministically picks the highest-APY eligible pool, then supplies each registered user's idle USDC into it — executing **per-user** through OpenZeppelin smart accounts where the agent is a restricted, spending-capped policy signer (the "ARMA" model).
+
+**Naming:** renamed from YieldSeeker to YieldPilot in 2026-10. The old name stays on purpose where it is an identity rather than a label — the MongoDB database (`yieldseeker`), the demo-owner key seed (`yieldseeker-demo-owner:v1` in `agentKeys.ts`; changing it orphans every deployed smart account) and a localStorage key. The root reports and `docs/superpowers/` mention YieldSeeker as the original ETHGlobal project this ports, or as history; leave those.
 
 ## Commands
 

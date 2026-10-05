@@ -38,12 +38,12 @@ export default function TopBar({ wallet, registered, notSetUp, historyOn, onHome
   }
   return (
     <header className="top">
-      <button className="brand" onClick={onHome} aria-label="YieldSeeker, overview">
+      <button className="brand" onClick={onHome} aria-label="YieldPilot, overview">
         <svg viewBox="0 0 30 30" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinejoin="round" strokeLinecap="round" aria-hidden="true">
           <path d="M2 26 L10.5 13 L14.6 18.6 L20 8.6 L28 26" />
           <rect x="18.6" y="1.6" width="2.8" height="2.8" fill="currentColor" stroke="none" />
         </svg>
-        YieldSeeker
+        YieldPilot
         <span className="nets"><span>SCAN MAINNET</span><span>EXEC TESTNET</span></span>
       </button>
       <nav className="actions">
