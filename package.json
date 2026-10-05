@@ -20,7 +20,6 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.100.1",
     "@blend-capital/blend-sdk": "^3.2.2",
     "@stellar/freighter-api": "^6.0.1",
     "@stellar/stellar-sdk": "^15.1.0",
@@ -31,7 +30,6 @@
     "next": "^16.2.7",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
-    "react-force-graph-2d": "^1.29.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {

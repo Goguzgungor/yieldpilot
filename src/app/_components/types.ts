@@ -21,6 +21,10 @@ export interface ApiScanResponse {
   pools: ApiScoredPool[];
   /** Epoch-ms timestamp of the last persisted scan; null on a true cold start. */
   updatedAt: number | null;
+  /** Epoch-ms when the next agent tick is due; null if unknown. */
+  nextTickAt: number | null;
+  /** Max risk score an eligible pool may have under the configured tolerance. */
+  riskCap: number;
 }
 
 export interface ApiPosition {

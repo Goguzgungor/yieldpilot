@@ -7,8 +7,8 @@
  * Cron (`/api/tick`) + the lazy first-load scan drive ticks instead.
  *
  * Guards: only the Node server runtime, never during `next build`, and never
- * when explicitly disabled (the escape hatch used by build/CI/tests so no
- * Anthropic/RPC calls happen).
+ * when explicitly disabled (the escape hatch used by build/CI/tests so no RPC
+ * calls happen).
  */
 export async function register(): Promise<void> {
   if (process.env.NEXT_RUNTIME !== "nodejs") return; // only the Node server runtime

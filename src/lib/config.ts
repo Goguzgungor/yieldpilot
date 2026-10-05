@@ -9,9 +9,8 @@ const Schema = z.object({
   // but absent.
   MONGODB_URI: z.string().min(1).optional(),
 
-  // ── Anthropic / LLM ───────────────────────────────────────────────────────
-  ANTHROPIC_API_KEY: z.string().min(1),
-  ANTHROPIC_MODEL: z.string().default("claude-sonnet-4-6"),
+  // ── Decision ──────────────────────────────────────────────────────────────
+  // The agent decides deterministically (see agent.ts); no model key is needed.
   RISK_TOLERANCE: z.enum(["conservative", "balanced", "aggressive"]).default("balanced"),
 
   // ── Scan side = MAINNET (read-only yield discovery) ───────────────────────
@@ -109,9 +108,6 @@ export function parseConfig(env: Record<string, string | undefined>) {
   return {
     // State store
     mongodbUri: e.MONGODB_URI,
-    // LLM
-    anthropicApiKey: e.ANTHROPIC_API_KEY,
-    anthropicModel: e.ANTHROPIC_MODEL,
     tolerance: e.RISK_TOLERANCE,
     // Scan (mainnet)
     scanRpcUrl: e.SCAN_RPC_URL,

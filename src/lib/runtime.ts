@@ -17,9 +17,10 @@ import { createDefindexSource } from "./defindex";
 import { createBlendOnchainPoolSource, createPoolDiscovery, type PoolDiscovery } from "./discovery";
 import { createSorobanClient, createExecutor, type Executor } from "./executor";
 import { createKeypairWallet, createPolicySignerWallet } from "./wallet";
-import { createAnthropicLlm, decide, type LlmClient } from "./agent";
+import { decide } from "./agent";
 import { runTick, runPerUserExecution } from "./orchestrator";
-import { scorePools, bestPool } from "./risk";
+import { scorePools, bestPool, MAX_RISK } from "./risk";
+import { nextTickAt } from "./cadence";
 import type { UserRegistration, TxResult } from "./types";
 import {
   serializePosition,
@@ -38,7 +39,7 @@ export interface LatestDecision {
 
 /**
  * Lazily-built process singleton wiring config → db → reader/discovery/wallet/
- * executor/llm together, plus the shared mutable loop state.
+ * executor together, plus the shared mutable loop state.
  *
  * CRITICAL: nothing here runs at module import time. `parseConfig(process.env)`
  * (and all SDK client construction) only happens inside {@link getRuntime} on
@@ -57,7 +58,6 @@ export interface Runtime {
   agentKeypair: Keypair;
   /** Shared testnet RPC server for exec-side reads (USDC balances) + per-user txs. */
   execServer: rpc.Server;
-  llm: LlmClient;
   /**
    * Most recent SCORED scan result (riskScore/eligible/reason populated;
    * BigInts still as bigint — serialize at the edge). Empty until the first tick.
@@ -141,7 +141,6 @@ export function getRuntime(): Runtime {
     usdcId: cfg.execUsdcContractId,
   });
   const executor = createExecutor(soroban, wallet);
-  const llm = createAnthropicLlm(cfg.anthropicApiKey, cfg.anthropicModel);
 
   runtime = {
     cfg,
@@ -152,7 +151,6 @@ export function getRuntime(): Runtime {
     executor,
     agentKeypair,
     execServer,
-    llm,
     lastScan: [],
     lastDecision: null,
     lastRebalanceAt: 0,
@@ -265,7 +263,7 @@ async function tick(rt: Runtime, doExecute: boolean): Promise<void> {
       getPosition: () => rt.db.getPosition(),
       // Wrap `decide` so the chosen pool + rationale are captured for the UI.
       decide: async (ctx) => {
-        const decision = await decide(rt.llm, ctx as any);
+        const decision = decide(ctx);
         rt.lastDecision = {
           action: decision.action,
           chosenPoolId: decision.action === "rebalance" ? decision.toPool ?? null : null,
@@ -319,7 +317,7 @@ async function tick(rt: Runtime, doExecute: boolean): Promise<void> {
         rt.lastRebalanceAt = now;
         // Mirror the per-user supply into the legacy singleton position so the
         // graph's `activePoolId` check triggers the blue glow + ripple animation.
-        // IMPORTANT: use the MAINNET pool ID (LLM's chosen pool or best eligible)
+        // IMPORTANT: use the MAINNET pool ID (the decision's chosen pool or best eligible)
         // — the testnet execPoolId never matches a displayed graph node.
         const prev = await rt.db.getPosition();
         if (!prev.poolId) {
@@ -523,6 +521,19 @@ export async function listUsers(): Promise<Array<UserRegistration & { position: 
   );
 }
 
+/**
+ * A smart account's idle (unsupplied) USDC, stroops as a decimal string, or null
+ * when it can't be read (e.g. the runtime can't boot without its env). One
+ * read-only simulation on testnet; no signing.
+ */
+export async function getIdleUsdc(smartWallet: string): Promise<string | null> {
+  try {
+    return (await readUsdcBalance(getRuntime(), smartWallet)).toString();
+  } catch {
+    return null;
+  }
+}
+
 /** One user's registration + position by owner, or null if not registered. */
 export async function getUserWithPosition(
   owner: string,
@@ -573,6 +584,10 @@ export interface ScanSnapshot {
   pools: SerializedScoredPool[];
   /** Epoch-ms when the snapshot was last written; null on a true cold start. */
   updatedAt: number | null;
+  /** Epoch-ms when the next agent tick is due (see cadence.ts); null if unknown. */
+  nextTickAt: number | null;
+  /** Max risk score an eligible pool may have under the configured tolerance. */
+  riskCap: number;
 }
 
 /**
@@ -589,16 +604,26 @@ export async function getLastScan(): Promise<ScanSnapshot> {
   const raw = await rt.db.getKV("lastScan");
   const atRaw = await rt.db.getKV("lastScanAt");
   const updatedAt = atRaw ? Number(atRaw) || null : null;
+  const meta = {
+    updatedAt,
+    nextTickAt: nextTickAt({
+      serverless: Boolean(process.env.VERCEL),
+      now: Date.now(),
+      lastScanAt: updatedAt,
+      intervalSec: rt.cfg.scanIntervalSec,
+    }),
+    riskCap: MAX_RISK[rt.cfg.tolerance],
+  };
 
   if (raw) {
     try {
       const pools = JSON.parse(raw) as SerializedScoredPool[];
-      return { pools, updatedAt };
+      return { pools, ...meta };
     } catch {
       // corrupt entry; fall through to in-memory copy
     }
   }
-  return { pools: serializeScoredPools(rt.lastScan), updatedAt };
+  return { pools: serializeScoredPools(rt.lastScan), ...meta };
 }
 
 /**

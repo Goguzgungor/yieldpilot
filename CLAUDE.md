@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-**YieldSeeker** — an autonomous DeFi yield agent on Stellar (Next.js 16 App Router). One backend agent continuously scans Blend V2 (+ DeFindex) yield pools, scores them against a risk tolerance, asks an LLM to pick the best eligible pool, then supplies each registered user's idle USDC into it — executing **per-user** through OpenZeppelin smart accounts where the agent is a restricted, spending-capped policy signer (the "ARMA" model).
+**YieldSeeker** — an autonomous DeFi yield agent on Stellar (Next.js 16 App Router). One backend agent continuously scans Blend V2 (+ DeFindex) yield pools, scores them against a risk tolerance, deterministically picks the highest-APY eligible pool, then supplies each registered user's idle USDC into it — executing **per-user** through OpenZeppelin smart accounts where the agent is a restricted, spending-capped policy signer (the "ARMA" model).
 
 ## Commands
 
@@ -30,8 +30,9 @@ npm run verify:discovery        # on-chain pool discovery
 # Many more proofs live in scripts/ (verify-*.ts, spike-*.ts) — run with `npx tsx scripts/<file>.ts`.
 ```
 
-- `AGENT_LOOP_ENABLED=0` disables the autonomous loop (used by tests/CI/build so no Anthropic/RPC calls fire).
-- Tests run with **no** `MONGODB_URI` / `ANTHROPIC_API_KEY`, so state falls back to in-memory and LLM/RPC are faked — keep them offline & deterministic.
+- `AGENT_LOOP_ENABLED=0` disables the autonomous loop (used by tests/CI/build so no RPC calls fire).
+- Tests run with **no** `MONGODB_URI`, so state falls back to in-memory and RPC is faked — keep them offline & deterministic.
+- **There is no LLM.** The decision is `bestPool` (highest APY among eligible pools); `agent.ts` composes the rationale string from the scan. It was an Anthropic tool call until 2026-10 and was removed for cost — every tick paid for a model call that only applied that same rule. Don't reintroduce a model call on the tick path.
 
 ## The two ideas you must hold to read this code
 
@@ -55,10 +56,9 @@ Nothing touches env or SDK clients at **module import** — everything is lazy s
 instrumentation.register() ──► runtime.startLoop() ──► tick() every SCAN_INTERVAL_SEC
                                        │
    discovery.ts ──discover pool ids──► scanner.ts / defindex.ts ──► risk.ts ──► agent.ts ──► orchestrator.ts
-   (backstop reward zone +            (Blend PoolV2 reader,        (scorePools/   (Anthropic   (runTick = legacy single-wallet
-    factory events, curated            DeFindex scan adapter)       bestPool +     tool-loop,   + guard rails;
-    fallback, DB-cached w/ TTL)                                     eligibility)   1 "rebalance"  runPerUserExecution = ARMA)
-                                                                                   tool)
+   (backstop reward zone +            (Blend PoolV2 reader,        (scorePools/   (decide =    (runTick = legacy single-wallet
+    factory events, curated            DeFindex scan adapter)       bestPool +     bestPool +   + guard rails;
+    fallback, DB-cached w/ TTL)                                     eligibility)   rationale)   runPerUserExecution = ARMA)
                                                                                         │
                                               executor.ts (Blend pool.submit Supply/WithdrawCollateral)
                                               wallet.ts  (keypair OR policy-signer)
@@ -68,11 +68,11 @@ instrumentation.register() ──► runtime.startLoop() ──► tick() every 
 Layer map:
 
 - **`config.ts`** — `parseConfig(process.env)` (zod). Most on-chain ids have defaults baked in, so a bare `.env` still boots. `SCAN_DEFINDEX_STRATEGIES` is a JSON array.
-- **`runtime.ts`** — the process singleton. `getRuntime()` wires config→db→reader/discovery/wallet/executor/llm and holds mutable loop state (`lastScan`, `lastDecision`, `running`, `poolIds`). All route-handler accessors (`getLastScan`, `getDecision`, `listUsers`, `registerUser`, …) live here. This is the seam between the loop and the API routes.
+- **`runtime.ts`** — the process singleton. `getRuntime()` wires config→db→reader/discovery/wallet/executor and holds mutable loop state (`lastScan`, `lastDecision`, `running`, `poolIds`). All route-handler accessors (`getLastScan`, `getDecision`, `listUsers`, `registerUser`, …) live here. This is the seam between the loop and the API routes.
 - **`discovery.ts`** — enumerate active Blend pools (backstop reward zone = authoritative; factory `deploy` events = best-effort), with `SCAN_BLEND_POOL_IDS` as fallback; result cached in the DB KV with a 60-min TTL.
 - **`scanner.ts`** — `BlendReader` reads a pool's USDC reserve (APY/TVL/utilization/oracle staleness) via `@blend-capital/blend-sdk` `PoolV2`. `defindex.ts` reads a strategy's underlying Blend reserve (multi-asset USDC/EURC/XLM).
 - **`risk.ts`** — `scorePools` (utilization + TVL → 0..100 risk) and `bestPool`; eligibility gated by `RISK_TOLERANCE`.
-- **`agent.ts`** — Anthropic tool-loop. One `rebalance` tool; no tool call ⇒ hold. Converts stroops→whole USDC before handing pools to the LLM.
+- **`agent.ts`** — deterministic `decide`: rebalance to `bestPool` unless already there (hold), with a rationale naming the choice and the best higher-yield pool it excluded.
 - **`orchestrator.ts`** — pure decision logic + guard rails (`runTick`), and the per-user supply loop (`runPerUserExecution`). Dependency-injected (no SDK imports) so it's unit-testable.
 - **`executor.ts` / `wallet.ts` / `smartAccount.ts`** — execution. See below.
 - **`db.ts`** (shared agent state: single position, activity log, rebalance ledger, KV cache) and **`registry.ts`** (per-user users + positions). Both are **Mongo-backed when `MONGODB_URI` is set, in-memory otherwise**.
@@ -91,7 +91,13 @@ The **faucet** (`/api/faucet`, `faucet.ts`) mints our testnet USDC SAC (admin = 
 
 ### Frontend
 
-`src/app/page.tsx` + `src/app/_components/*` — a live "network graph" UI (`react-force-graph-2d`), `Onboarding`, `AnalysisPanel`. State streams from `GET /api/events` (SSE, every 2s). Wallet via Freighter (`useFreighter`). Routes are all `dynamic = "force-dynamic"`.
+**Plate I** (`src/app/_components/PlateApp.tsx`): one night sky. The lower part is the *plate* — a dithered stipple range drawn on canvas where every summit is a scanned pool (x = risk rank, height = APY relative to the scan, width = TVL depth; excluded pools dissolve into fog past the risk-cap line; the route summit carries a column of light). The upper part is the *reading area*: one view at a time — visitor / holder overview, a selected pool, setup (onboarding), account, history — over a fixed-height band so the plate never moves. Everything is cream on night; there is no second accent colour.
+
+- Pure, tested geometry and copy live in `src/lib/plate/` (layout, ridge, label declutter, seeded noise) and `src/lib/voice.ts` (agent state + sentences from the activity log). `src/app/**` is excluded from vitest, so keep logic there, not in components.
+- `_components/plate/engine.ts` is the imperative canvas: the dithered print is rebuilt only when the scan signature or viewport changes (`Plate.tsx` keys it on a pool signature, not the polled array); spray, the route beam, the scan sweep and supply "ink" are the living layer. It honours `prefers-reduced-motion` (print only) and freezes when offline.
+- State is plain polling (`useLivingData`: position + activity every 3s, scan every 15s). A real scan in the activity log triggers the labelled sweep; a new supply tx triggers the ink. Neither replays history on page load.
+- "Refresh" only re-reads the cached snapshot — no UI path triggers the agent except onboarding's post-registration `/api/tick` (cheap now that there is no model call).
+- Wallet via Freighter (`useFreighter`). Routes are all `dynamic = "force-dynamic"`.
 
 ## Conventions & gotchas
 
