@@ -131,7 +131,7 @@ Read from the code on 2026-10-05. They assume `PER_TX_CAP_USDC=2000`; check `.en
 |---|---|
 | Laptop sleeps or the driver crashes | `caffeinate -dimsu`; resumable driver (step checkpoints, torn-line repair); rerun the same command |
 | Server crash | restart it; the driver waits up to 20 min on "unreachable" without failing events |
-| Faucet-admin sequence collision with someone using the live faucet | rare; retry. A retried mint after an ambiguous failure may double-mint test USDC. All mints are recorded. |
+| Faucet-admin sequence collision with someone using the live faucet | rare; retry. Only a refused connection is waited out; a reset/timeout counts as an attempt. A retried mint after an ambiguous failure may still double-mint test USDC — the export counts such mints as `unrecordedMints` (from the server's activity log). |
 | SDF RPC / Friendbot rate limits | serial pace; 3 attempts with 5 s → 15 s backoff; failures are recorded, not fatal |
 | Anthropic or mainnet-RPC outage | those ticks fail entirely (observation 7); visible in activity + summary |
 | RPC history expires (~7 days) or testnet reset (2026-12-16) | R6 export right after the run; the tarball holds raw XDR |
@@ -2795,31 +2795,31 @@ git commit -m "docs: on-chain load test runbook"
 
 ### R3: Preflight (T−45 m)
 
-- [ ] tmux window 2: `set -a; source .env.loadtest; set +a; MONGODB_DB=yieldseeker_loadtest_smoke npx tsx scripts/loadtest/preflight.ts`
-Expected: 9 × ✅, `all checks passed`. Any ❌ → fix before going on.
+- [ ] tmux window 2: `set -a; source .env.loadtest; set +a; export MONGODB_DB=yieldseeker_loadtest_smoke LOADTEST_SEED=$(openssl rand -hex 32); npx tsx scripts/loadtest/preflight.ts` (smoke gets its own wallets so they never mix with the full run's)
+Expected: 10 × ✅ (incl. "server writes to this db"), `all checks passed`. Any ❌ → fix before going on.
 
 ### R4: Smoke run (T−40 m → T−15 m)
 
-- [ ] `MONGODB_DB=yieldseeker_loadtest_smoke caffeinate -dimsu npx tsx scripts/loadtest/run.ts --run loadtest-runs/smoke-$(date +%Y%m%d-%H%M) --wallets 5 --scale 1/96`
+- [ ] Same shell: `SMOKE=loadtest-runs/smoke-$(date +%Y%m%d-%H%M); caffeinate -dimsu npx tsx scripts/loadtest/run.ts --run $SMOKE --new --wallets 5 --scale 1/96`
 Expected: ~15–25 min (the plan is 15 min; serial ticks add lag), ending with `plan complete`.
-- [ ] `MONGODB_DB=yieldseeker_loadtest_smoke npx tsx scripts/loadtest/export.ts --run loadtest-runs/smoke-…`
+- [ ] `npx tsx scripts/loadtest/export.ts --run $SMOKE`
 Expected in `summary.json`: 5/5 onboarded. `steady`, `drip`, `dust` each with ≥ 1 supply. `whale` with 3 supplies, 5000 USDC supplied and `supplyErrors` ≥ 1 after its top-up. `churn` with exactly 1 supply. `rpcNotFound = 0`.
 - [ ] Spot-check one supply hash from `offchain/activity.jsonl` on `https://stellar.expert/explorer/testnet/tx/<hash>`.
 - [ ] Stop the server (Ctrl-C in window 1) and restart it **without** the inline override, so it uses the dated full-run db: `set -a; source .env.loadtest; set +a; npx next start -p 3100 2>&1 | tee -a loadtest-runs/server-full.log`
-- [ ] Re-run preflight without the override → all ✅ and `MONGODB_DB=yieldseeker_loadtest_<yyyymmdd>`.
+- [ ] In a **fresh** shell (drops the smoke `MONGODB_DB`/`LOADTEST_SEED`): `set -a; source .env.loadtest; set +a; npx tsx scripts/loadtest/preflight.ts` → all ✅ and `MONGODB_DB=yieldseeker_loadtest_<yyyymmdd>`.
 
 ### R5: Full run (T0 → T+24 h)
 
-- [ ] Laptop on power, lid open, Wi-Fi stable. In tmux window 2:
-`RUN=loadtest-runs/full-$(date +%Y%m%d); caffeinate -dimsu npx tsx scripts/loadtest/run.ts --run $RUN --wallets 97 2>&1 | tee -a $RUN.log`
+- [ ] Laptop on power, lid open, Wi-Fi stable. In tmux window 2 (same fresh shell), record the path once — `$(date)` changes at midnight:
+`echo loadtest-runs/full-$(date +%Y%m%d) > loadtest-runs/CURRENT; RUN=$(cat loadtest-runs/CURRENT); caffeinate -dimsu npx tsx scripts/loadtest/run.ts --run $RUN --new --wallets 97 2>&1 | tee -a $RUN.log`
 - [ ] T+1 h: `npx tsx scripts/loadtest/export.ts --run $RUN --local-only` → ≥ 24 onboarded, `failed` ≈ 0.
 - [ ] T+6 h and T+12 h: same command; `maxLagMs` < 30 min; tick failures explained by the server log.
-- [ ] If the driver dies: rerun the same `run.ts` command (it resumes). If the server dies: restart it as in R4's last step. The driver waits up to 20 min.
+- [ ] If the driver dies: `RUN=$(cat loadtest-runs/CURRENT); caffeinate -dimsu npx tsx scripts/loadtest/run.ts --run $RUN 2>&1 | tee -a $RUN.log` — **without** `--new` (it resumes; a 2nd copy is refused by `driver.lock`). If the server dies: restart it as in R4's last step and re-run preflight; the driver waits as long as the connection is refused.
 - [ ] T+24 h: driver prints `plan complete`.
 
 ### R6: Export + archive (T+24 h → T+25 h)
 
-- [ ] `npx tsx scripts/loadtest/export.ts --run $RUN` → `summary.json`, `chain/`, `state/`, `offchain/` written; `rpcNotFound = 0`.
+- [ ] `npx tsx scripts/loadtest/export.ts --run $(cat loadtest-runs/CURRENT)` (refuses unless the shell's `MONGODB_DB` is the run's) → `summary.json`, `chain/`, `state/`, `offchain/` written; `rpcNotFound = 0`.
 - [ ] Compare against "Expected observations" (Design). Note deviations as findings; do not "fix" them during the run.
-- [ ] `tar czf ~/yieldseeker-loadtest-$(basename $RUN).tgz -C loadtest-runs $(basename $RUN)` and store the tarball outside the repo. Do this before the 7-day RPC window closes and before the 2026-12-16 testnet reset.
+- [ ] `RUN=$(cat loadtest-runs/CURRENT); tar czf ~/yieldseeker-loadtest-$(basename $RUN).tgz -C loadtest-runs $(basename $RUN)` and store the tarball outside the repo. Do this before the 7-day RPC window closes and before the 2026-12-16 testnet reset.
 - [ ] Stop the server; `stellar keys address ys-loadtest-agent` stays in `.env.loadtest` for the analysis.

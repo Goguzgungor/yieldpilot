@@ -30,20 +30,33 @@ set -a; source .env.loadtest; set +a
 npx next start -p 3100 2>&1 | tee -a loadtest-runs/server.log
 ```
 
-## Preflight → smoke → full run → export (tmux window 2)
+## Smoke run (tmux window 2) — own db, own seed
 
 ```bash
 set -a; source .env.loadtest; set +a
-npx tsx scripts/loadtest/preflight.ts                                   # all ✅
-
-# smoke: 5 wallets (one per cohort), 24 h squeezed into ~15 min, own db
-MONGODB_DB=yieldseeker_loadtest_smoke npx tsx scripts/loadtest/run.ts --run loadtest-runs/smoke-$(date +%Y%m%d-%H%M) --wallets 5 --scale 1/96
-MONGODB_DB=yieldseeker_loadtest_smoke npx tsx scripts/loadtest/export.ts --run loadtest-runs/smoke-YYYYMMDD-HHMM
-# then restart the server without the MONGODB_DB prefix and re-run preflight
-
-RUN=loadtest-runs/full-$(date +%Y%m%d)
-caffeinate -dimsu npx tsx scripts/loadtest/run.ts --run $RUN --wallets 97 2>&1 | tee -a $RUN.log
-npx tsx scripts/loadtest/export.ts --run $RUN --local-only              # progress, no network
-npx tsx scripts/loadtest/export.ts --run $RUN                           # after T+24h, within 7 days
+export MONGODB_DB=yieldseeker_loadtest_smoke                       # same as the server's smoke prefix
+export LOADTEST_SEED=$(openssl rand -hex 32)                        # smoke wallets ≠ full-run wallets
+npx tsx scripts/loadtest/preflight.ts                               # all ✅ (incl. "server writes to this db")
+SMOKE=loadtest-runs/smoke-$(date +%Y%m%d-%H%M)
+npx tsx scripts/loadtest/run.ts --run $SMOKE --new --wallets 5 --scale 1/96   # 24 h squeezed into ~15 min
+npx tsx scripts/loadtest/export.ts --run $SMOKE
 ```
-Resume after any crash: rerun the exact `run.ts` command (same `--run`).
+Then restart the server **without** the `MONGODB_DB` prefix and open a fresh shell.
+
+## Full run (tmux window 2, fresh shell)
+
+```bash
+set -a; source .env.loadtest; set +a
+npx tsx scripts/loadtest/preflight.ts                               # all ✅, MONGODB_DB=yieldseeker_loadtest_<date>
+echo loadtest-runs/full-$(date +%Y%m%d) > loadtest-runs/CURRENT     # record the path once — $(date) changes at midnight
+RUN=$(cat loadtest-runs/CURRENT)
+caffeinate -dimsu npx tsx scripts/loadtest/run.ts --run $RUN --new --wallets 97 2>&1 | tee -a $RUN.log
+```
+
+- Progress (no network): `npx tsx scripts/loadtest/export.ts --run $(cat loadtest-runs/CURRENT) --local-only`
+- Resume after any crash or restart — **without** `--new`:
+  `RUN=$(cat loadtest-runs/CURRENT); caffeinate -dimsu npx tsx scripts/loadtest/run.ts --run $RUN 2>&1 | tee -a $RUN.log`
+- After T+24 h, within 7 days: `npx tsx scripts/loadtest/export.ts --run $(cat loadtest-runs/CURRENT)`
+
+The driver refuses to start a second copy on the same run dir (`driver.lock`), to
+initialise without `--new`, or to run against a server that uses a different Mongo db.
