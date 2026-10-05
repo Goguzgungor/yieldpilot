@@ -11,12 +11,16 @@
  * G…/C… ids and tx hashes.
  */
 import { execSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { basename } from "node:path";
 import { parseArgs } from "node:util";
 import { rpc } from "@stellar/stellar-sdk";
+import { createDb } from "../../src/lib/db";
+import { mongoDbName } from "../../src/lib/mongo";
 import { EXEC_USDC_CONTRACT_ID } from "../../src/lib/onboarding";
 import { createApi } from "./api";
 import { assetFromSacName, createChainOps, readContractString } from "./chain";
+import { probeServerDb, registryEmptyProblem } from "./dbprobe";
 import { initMode, parseScale, runPlan } from "./driver";
 import { acquireLock, finishedEventIds, openRunDir } from "./manifest";
 import { buildPlan, type Plan } from "./schedule";
@@ -32,6 +36,8 @@ export interface RunMeta {
   planSeed: number;
   agentPublicKey: string;
   usdcSac: string;
+  /** MONGODB_DB the server was verified to use — export.ts reads the activity log from it. */
+  mongoDb: string;
   gitSha: string;
 }
 
@@ -70,8 +76,15 @@ async function main() {
   const mode = initMode(meta !== null, values.new!);
   const api = createApi(meta?.baseUrl ?? values["base-url"]!, { cronSecret: process.env.CRON_SECRET || undefined });
   const { agentPublicKey } = await api.agent();
+  // The server must write to the db this shell names, or the run's registry and
+  // activity log end up somewhere preflight never looked (see dbprobe.ts).
+  if (!process.env.MONGODB_URI) throw new Error("MONGODB_URI is not set — source .env.loadtest first");
+  const dbOk = await probeServerDb(api, (m) => createDb().log("driver", m), randomUUID());
+  if (dbOk !== true) throw new Error(dbOk);
 
   if (mode === "init" || !meta) {
+    const registryProblem = registryEmptyProblem(await api.get("/api/users"));
+    if (registryProblem) throw new Error(registryProblem);
     const walletCount = Number(values.wallets);
     const planSeed = values.seed ? Number(values.seed) : parseInt(seedHex.slice(0, 8), 16);
     const plan = buildPlan({ walletCount, seed: planSeed });
@@ -86,12 +99,15 @@ async function main() {
       planSeed,
       agentPublicKey,
       usdcSac: process.env.EXEC_USDC_CONTRACT_ID ?? EXEC_USDC_CONTRACT_ID,
+      mongoDb: mongoDbName(),
       gitSha: execSync("git rev-parse HEAD").toString().trim(),
     };
     files.writeJson("run.json", meta); // written last: its presence marks the run as initialised
     log(`initialised ${meta.runId}: ${walletCount} wallets, ${plan.events.length} events, scale ${meta.timeScale}, agent ${agentPublicKey}`);
   } else if (agentPublicKey !== meta.agentPublicKey) {
     throw new Error(`server agent ${agentPublicKey} ≠ this run's agent ${meta.agentPublicKey} — wrong server or env`);
+  } else if (meta.mongoDb !== mongoDbName()) {
+    throw new Error(`this shell uses db '${mongoDbName()}' but the run writes to '${meta.mongoDb}' — set MONGODB_DB=${meta.mongoDb}`);
   }
 
   const plan = files.readJson<Plan>("plan.json")!;
@@ -133,7 +149,11 @@ async function main() {
   log(`plan complete (${ran} event(s) this session). Next: npx tsx scripts/loadtest/export.ts --run ${values.run}`);
 }
 
-main().catch((e) => {
-  console.error("FATAL:", (e as Error).message);
-  process.exit(1);
-});
+// Explicit exit: the Mongo client used by the db probe would keep the process alive.
+main().then(
+  () => process.exit(0),
+  (e) => {
+    console.error("FATAL:", (e as Error).message);
+    process.exit(1);
+  },
+);

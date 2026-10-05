@@ -7,15 +7,18 @@
  *
  * Exit 1 if any check fails. Prints only public ids.
  */
+import { randomUUID } from "node:crypto";
 import { parseArgs } from "node:util";
 import { PoolV2 } from "@blend-capital/blend-sdk";
 import { Keypair, rpc } from "@stellar/stellar-sdk";
+import { createDb } from "../../src/lib/db";
 import { deriveOwnerKeypair } from "../../src/lib/faucet";
 import { getCollection, mongoDbName } from "../../src/lib/mongo";
 import { EXEC_POOL_ID, EXEC_USDC_CONTRACT_ID } from "../../src/lib/onboarding";
 import { SMART_ACCOUNT_WASM_HASH } from "../../src/lib/smartAccount";
 import { createApi } from "./api";
 import { loadHorizonAccount, readContractString, TESTNET_PASSPHRASE, xlmBalance } from "./chain";
+import { probeServerDb } from "./dbprobe";
 import { evaluatePreflight, type PreflightFacts } from "./preflight-checks";
 
 async function probeMongo(): Promise<true | string> {
@@ -47,6 +50,9 @@ async function main() {
     // Read exactly as the server does, so "blank" counts as unset.
     mongoDb: mongoDbName() === "yieldseeker" ? undefined : mongoDbName(),
     mongoWritable: env.MONGODB_URI ? await probeMongo() : "MONGODB_URI is not set",
+    serverDb: env.MONGODB_URI
+      ? await probeServerDb(api, (m) => createDb().log("preflight", m), randomUUID())
+      : "MONGODB_URI is not set",
     envAgent,
     serverAgent: await api.agent().then((a) => a.agentPublicKey, () => null),
     agentXlm: agentAcc ? xlmBalance(agentAcc) : 0,

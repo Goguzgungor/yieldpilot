@@ -4,6 +4,7 @@ import { evaluatePreflight, type PreflightFacts } from "../../scripts/loadtest/p
 const good: PreflightFacts = {
   mongoDb: "yieldseeker_loadtest_20261006",
   mongoWritable: true,
+  serverDb: true,
   envAgent: "GAGENT",
   serverAgent: "GAGENT",
   agentXlm: 10_000,
@@ -24,6 +25,7 @@ describe("evaluatePreflight", () => {
     ["the production Mongo db", { mongoDb: "yieldseeker" }, "isolated Mongo db"],
     ["an unset Mongo db", { mongoDb: undefined }, "isolated Mongo db"],
     ["an unwritable Mongo db", { mongoWritable: "not authorized" }, "Mongo writable"],
+    ["a server on another Mongo db", { serverDb: "server does not see this shell's db" }, "server writes to this db"],
     ["a server on another agent (prod?)", { serverAgent: "GPROD" }, "server runs the load-test agent"],
     ["a server that is down", { serverAgent: null }, "server runs the load-test agent"],
     ["a poor agent", { agentXlm: 50 }, "agent XLM ≥ 1000"],

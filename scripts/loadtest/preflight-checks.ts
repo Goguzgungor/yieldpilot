@@ -3,6 +3,8 @@ export interface PreflightFacts {
   mongoDb: string | undefined;
   /** true, or the error message of the insert+delete probe. */
   mongoWritable: true | string;
+  /** true when the server's /api/activity shows a nonce row this shell wrote (see dbprobe.ts). */
+  serverDb: true | string;
   /** G of AGENT_SIGNER_SECRET in this shell (.env.loadtest). */
   envAgent: string;
   /** agentPublicKey from the running server's /api/agent; null if unreachable. */
@@ -30,6 +32,7 @@ export function evaluatePreflight(f: PreflightFacts): Check[] {
       detail: `MONGODB_DB=${f.mongoDb ?? "(unset → production db 'yieldseeker')"}`,
     },
     { name: "Mongo writable", ok: f.mongoWritable === true, detail: f.mongoWritable === true ? "insert+delete ok" : f.mongoWritable },
+    { name: "server writes to this db", ok: f.serverDb === true, detail: f.serverDb === true ? "nonce row visible via /api/activity" : f.serverDb },
     {
       name: "server runs the load-test agent",
       ok: f.serverAgent === f.envAgent,

@@ -13,10 +13,12 @@ import { parseArgs } from "node:util";
 import { PoolV2 } from "@blend-capital/blend-sdk";
 import { Address, nativeToScVal, rpc } from "@stellar/stellar-sdk";
 import { createDb } from "../../src/lib/db";
+import { mongoDbName } from "../../src/lib/mongo";
 import { EXEC_POOL_ID, SPENDING_POLICY_ID } from "../../src/lib/onboarding";
 import * as registry from "../../src/lib/registry";
 import { readSpendingLimitData } from "../../src/lib/smartAccount";
 import { simulateCall, TESTNET_PASSPHRASE } from "./chain";
+import { exportDbProblem } from "./dbprobe";
 import { openRunDir, walletStates } from "./manifest";
 import { activityHashes, collectHashes, horizonAccountTxs, parseActivity, rpcGetTransaction, runWindow, summarize } from "./report";
 import type { RunMeta } from "./run";
@@ -36,6 +38,8 @@ async function main() {
   const recs = files.read();
 
   if (values["local-only"]) return print(summarize(plan, recs, null));
+  const dbProblem = exportDbProblem(meta.mongoDb, !!process.env.MONGODB_URI, mongoDbName());
+  if (dbProblem) throw new Error(dbProblem);
 
   const rpcUrl = process.env.EXEC_RPC_URL ?? "https://soroban-testnet.stellar.org";
   const server = new rpc.Server(rpcUrl);
