@@ -13,7 +13,15 @@ import { MongoClient, type Db as MongoNativeDb, type Document } from "mongodb";
  * (read-only filesystem + no shared state across invocations).
  */
 
-const DB_NAME = "yieldseeker";
+/**
+ * Database name inside the cluster. Production uses the default; MONGODB_DB lets
+ * an isolated run (the on-chain load test) keep its users, positions and activity
+ * log out of the live registry. Read at call time, like MONGODB_URI.
+ */
+export function mongoDbName(env: Record<string, string | undefined> = process.env): string {
+  const v = env.MONGODB_DB?.trim();
+  return v ? v : "yieldseeker";
+}
 
 interface MongoCache {
   promise: Promise<MongoNativeDb> | null;
@@ -37,7 +45,7 @@ export function getMongoDb(): Promise<MongoNativeDb> {
     c.promise = (async () => {
       const client = new MongoClient(uri, { serverSelectionTimeoutMS: 10_000 });
       await client.connect();
-      return client.db(DB_NAME);
+      return client.db(mongoDbName());
     })();
     // If the first connect fails, drop the cached (rejected) promise so a later
     // call can retry instead of being stuck with a permanently-rejected handle.
