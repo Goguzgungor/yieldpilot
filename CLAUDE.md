@@ -18,6 +18,11 @@ npx vitest run src/lib/risk.test.ts          # a single test file
 npx vitest run -t "scores pools"             # tests matching a name
 npx tsc --noEmit                             # typecheck (no lint tool configured)
 
+# 24h on-chain load test (testnet; see scripts/loadtest/README.md):
+npx tsx scripts/loadtest/preflight.ts                      # guards: isolated MONGODB_DB, load-test agent, pool, wasm
+npx tsx scripts/loadtest/run.ts --run loadtest-runs/<id>   # resumable serial driver
+npx tsx scripts/loadtest/export.ts --run loadtest-runs/<id> [--local-only]
+
 # On-chain verify scripts (hit REAL testnet/mainnet — need a populated .env):
 npm run verify:blend            # tsx scripts/verify-blend-testnet.ts
 npm run verify:blend-mainnet    # mainnet pool scan
