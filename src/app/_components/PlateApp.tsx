@@ -15,6 +15,7 @@ import HistoryView from "./views/HistoryView";
 import { extractAgentTxs, formatTimeAgo } from "./format";
 import { routeName } from "./poolNames";
 import { agentStatus, routeVoice } from "../../lib/voice";
+import { routeRationale } from "../../lib/rationale";
 import { clamp } from "../../lib/plate/noise";
 
 // Plate I: the plate (the range of pools) never moves; the reading area above
@@ -73,6 +74,9 @@ export default function PlateApp() {
   }, [data.pools]);
   const protocols = useMemo(() => [...new Set(data.pools.map((p) => p.protocol))], [data.pools]);
   const standing = useMemo(() => routeVoice(data.pools), [data.pools]);
+  // Derived from the live scan, never read back from the stored decision: a
+  // stored rationale can be stale (or the old model's markdown) until the next tick.
+  const rationale = useMemo(() => routeRationale(data.pools), [data.pools]);
   const allTxs = useMemo(() => extractAgentTxs(data.activity, 50), [data.activity]);
   const myTxs = useMemo(
     () => (registered ? allTxs.filter((t) => t.smartWallet === registered.smartWallet) : []),
@@ -89,7 +93,7 @@ export default function PlateApp() {
     nowSec: now / 1000,
     offline,
     coldStart: cold,
-    rationale: data.position?.rationale || null,
+    rationale,
     routeVoice: standing,
     poolCount: data.pools.length,
     protocols,
@@ -143,7 +147,7 @@ export default function PlateApp() {
   let view: React.ReactNode;
   if (mode === "pool" && selected) {
     viewKey = `pool:${selected.poolId}`;
-    view = <PoolView pool={selected} route={route} holding={holding} riskCap={data.riskCap} rationale={data.position?.rationale || null} onBack={home} />;
+    view = <PoolView pool={selected} route={route} holding={holding} riskCap={data.riskCap} rationale={rationale} onBack={home} />;
   } else if (mode === "account" && registered) {
     viewKey = "account";
     view = (
