@@ -91,11 +91,11 @@ describe("onboard", () => {
     expect(api.authorize).toHaveBeenCalledTimes(3);
   });
 
-  it("waits out an unreachable server without burning attempts", async () => {
+  it("waits out a refused connection (server down) without burning attempts", async () => {
     let n = 0;
     const api = fakeApi({
       faucet: vi.fn(async () => {
-        if (n++ < 2) throw new ApiError("/api/faucet", 0, "null");
+        if (n++ < 2) throw new ApiError("/api/faucet", 0, "null", "ECONNREFUSED");
         return { txHash: "m" };
       }),
       register: vi.fn(async () => {
@@ -106,6 +106,18 @@ describe("onboard", () => {
     // 2 outages absorbed on faucet; register then burns its own 3 attempts.
     expect(api.faucet).toHaveBeenCalledTimes(3);
     expect(api.register).toHaveBeenCalledTimes(3);
+    expect(rec.status).toBe("failed");
+  });
+
+  it("counts a reset or client timeout as a real attempt — the server may still be working on it", async () => {
+    const api = fakeApi({
+      authorize: vi.fn(async () => {
+        throw new ApiError("/api/authorize", 0, "null", "ECONNRESET");
+      }),
+    });
+    const rec = await runEvent(ctxWith(api), onboard, 0);
+    // maxOutageWaits is 2 in ctxWith; a reset must not use them: exactly `attempts` (3) calls.
+    expect(api.authorize).toHaveBeenCalledTimes(3);
     expect(rec.status).toBe("failed");
   });
 

@@ -11,8 +11,10 @@ export class ApiError extends Error {
     readonly route: string,
     readonly status: number,
     detail: string,
+    /** Network error code when status is 0 (see JsonResponse.code). */
+    readonly code?: string,
   ) {
-    super(`${route} → ${status === 0 ? "unreachable" : `HTTP ${status}`}: ${detail}`);
+    super(`${route} → ${status === 0 ? `unreachable (${code ?? "?"})` : `HTTP ${status}`}: ${detail}`);
     this.name = "ApiError";
   }
   /** 4xx = the request itself is wrong; retrying cannot help. */
@@ -58,7 +60,7 @@ export function createApi(baseUrl: string, opts: { request?: typeof requestJson;
     const res: JsonResponse<T> = await request<T>(method, new URL(path, baseUrl).toString(), body, timeoutMs);
     if (res.status < 200 || res.status >= 300 || !res.data) {
       // The query string is dropped from the route so a cron key never reaches a log.
-      throw new ApiError(path.split("?")[0], res.status, res.data?.error ?? JSON.stringify(res.data));
+      throw new ApiError(path.split("?")[0], res.status, res.data?.error ?? JSON.stringify(res.data), res.code);
     }
     return res.data;
   }

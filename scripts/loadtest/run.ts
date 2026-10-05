@@ -92,7 +92,8 @@ async function main() {
     now: Date.now,
     sleep,
     log,
-    retry: { attempts: 3, baseDelayMs: 5_000, outageWaitMs: 30_000, maxOutageWaits: 40 },
+    // A down server is waited out indefinitely: the lag is recorded, and the request never arrived.
+    retry: { attempts: 3, baseDelayMs: 5_000, outageWaitMs: 30_000, maxOutageWaits: Number.POSITIVE_INFINITY },
   };
 
   const ran = await runPlan({

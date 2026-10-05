@@ -5,11 +5,11 @@ import type { requestJson } from "../../scripts/loadtest/http";
 const BASE = "http://localhost:3100";
 type Call = { method: string; url: string; body: unknown; timeoutMs: number | undefined };
 
-function fake(status: number, data: unknown) {
+function fake(status: number, data: unknown, code?: string) {
   const calls: Call[] = [];
   const request = (async (method: string, url: string, body?: unknown, timeoutMs?: number) => {
     calls.push({ method, url, body, timeoutMs });
-    return { status, data };
+    return { status, data, code };
   }) as unknown as typeof requestJson;
   return { calls, request };
 }
@@ -62,8 +62,10 @@ describe("createApi", () => {
     expect(e400.message).toContain("invalid body");
     const e502 = await createApi(BASE, { request: fake(502, { ok: false, error: "faucet mint failed" }).request }).faucet("C", 5).catch((e) => e);
     expect(e502.permanent).toBe(false);
-    const e0 = await createApi(BASE, { request: fake(0, null).request, cronSecret: "s3" }).tick().catch((e) => e);
+    const e0 = await createApi(BASE, { request: fake(0, null, "ECONNREFUSED").request, cronSecret: "s3" }).tick().catch((e) => e);
     expect(e0.status).toBe(0);
+    expect(e0.code).toBe("ECONNREFUSED");
+    expect(e0.message).toContain("ECONNREFUSED");
     expect(e0.message).not.toContain("s3");
   });
 });

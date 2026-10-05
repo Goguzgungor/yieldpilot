@@ -20,8 +20,11 @@ export interface StepCtx {
   sleep(ms: number): Promise<void>;
   /**
    * attempts / baseDelayMs: real failures back off ×3 (5 s → 15 s by default).
-   * outageWaitMs / maxOutageWaits: an unreachable server (status 0) is waited
-   * out without burning attempts, so a server restart mid-run costs time, not events.
+   * outageWaitMs / maxOutageWaits: a refused connection (server down — the
+   * request never arrived) is waited out without burning attempts, so a server
+   * restart mid-run costs time, not events. run.ts waits indefinitely. A reset or
+   * client timeout is NOT an outage: the server may still be processing the
+   * request, so it counts as an ordinary attempt.
    */
   retry: { attempts: number; baseDelayMs: number; outageWaitMs: number; maxOutageWaits: number };
   log(msg: string): void;
@@ -40,9 +43,10 @@ async function withRetry<T>(ctx: StepCtx, label: string, fn: () => Promise<T>): 
     try {
       return await fn();
     } catch (e) {
-      if (e instanceof ApiError && e.status === 0 && outages < ctx.retry.maxOutageWaits) {
+      if (e instanceof ApiError && e.code === "ECONNREFUSED" && outages < ctx.retry.maxOutageWaits) {
+        // Log the first wait and then every 10th, so a long outage stays visible but quiet.
+        if (outages % 10 === 0) ctx.log(`${label}: server down (connection refused), waiting — ${outages} wait(s) so far`);
         outages++;
-        ctx.log(`${label}: server unreachable, waiting ${ctx.retry.outageWaitMs} ms`);
         await ctx.sleep(ctx.retry.outageWaitMs);
         continue;
       }
