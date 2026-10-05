@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dueAt, parseScale, runPlan } from "../../scripts/loadtest/driver";
+import { dueAt, initMode, parseScale, runPlan } from "../../scripts/loadtest/driver";
 import type { PlanEvent } from "../../scripts/loadtest/schedule";
 
 const evs: PlanEvent[] = [
@@ -68,5 +68,13 @@ describe("driver", () => {
       },
     });
     expect(starts).toEqual([0, 400_000, 800_000]);
+  });
+
+  it("initialises only with --new and resumes only without it", () => {
+    expect(initMode(false, true)).toBe("init");
+    expect(initMode(true, false)).toBe("resume");
+    // The R5 command uses $(date): rerun after midnight points at a fresh dir — must not start a 2nd run.
+    expect(() => initMode(false, false)).toThrow(/--new/);
+    expect(() => initMode(true, true)).toThrow(/already initialised/);
   });
 });

@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  acquireLock,
   finishedEventIds,
   openRunDir,
   stepsFor,
@@ -63,5 +64,20 @@ describe("derived state", () => {
     const s = walletStates(recs);
     expect(s.has(4)).toBe(false);
     expect(s.get(3)).toEqual({ owner: "GOWN", smartWallet: "CSA", poolRuleId: 1, usdcRuleId: 2, registered: false, trustline: true });
+  });
+});
+
+describe("acquireLock", () => {
+  it("refuses a second driver while the first is alive, and lets a dead one's lock be taken over", () => {
+    const dir = tmp();
+    const release = acquireLock(dir, 111, () => true);
+    expect(() => acquireLock(dir, 222, (pid) => pid === 111)).toThrow(/pid 111/);
+    // pid 111 died without releasing (kill -9): the next driver takes over.
+    const release2 = acquireLock(dir, 333, () => false);
+    expect(readFileSync(join(dir, "driver.lock"), "utf8")).toBe("333");
+    release(); // a stale holder's release must not drop the new owner's lock
+    expect(readFileSync(join(dir, "driver.lock"), "utf8")).toBe("333");
+    release2();
+    expect(() => readFileSync(join(dir, "driver.lock"))).toThrow();
   });
 });

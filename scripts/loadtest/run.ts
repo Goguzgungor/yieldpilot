@@ -2,12 +2,13 @@
  * On-chain load test driver — N wallets × 24 h against a running YieldSeeker.
  *
  *   set -a; source .env.loadtest; set +a
- *   caffeinate -dimsu npx tsx scripts/loadtest/run.ts --run loadtest-runs/<id> \
+ *   caffeinate -dimsu npx tsx scripts/loadtest/run.ts --run loadtest-runs/<id> --new \
  *     [--wallets 97] [--scale 1] [--base-url http://localhost:3100] [--seed <int>]
  *
- * The first call initialises <id>/ (plan.json, wallets.json, run.json); calling
- * again with the same --run resumes it — the stored startedAt/scale/plan win
- * over flags. NEVER prints secrets: only public G…/C… ids and tx hashes.
+ * --new initialises <id>/ (plan.json, wallets.json, run.json); the same command
+ * WITHOUT --new resumes it — the stored startedAt/scale/plan win over flags.
+ * One driver per run dir (driver.lock). NEVER prints secrets: only public
+ * G…/C… ids and tx hashes.
  */
 import { execSync } from "node:child_process";
 import { basename } from "node:path";
@@ -16,8 +17,8 @@ import { rpc } from "@stellar/stellar-sdk";
 import { EXEC_USDC_CONTRACT_ID } from "../../src/lib/onboarding";
 import { createApi } from "./api";
 import { assetFromSacName, createChainOps, readContractString } from "./chain";
-import { parseScale, runPlan } from "./driver";
-import { finishedEventIds, openRunDir } from "./manifest";
+import { initMode, parseScale, runPlan } from "./driver";
+import { acquireLock, finishedEventIds, openRunDir } from "./manifest";
 import { buildPlan, type Plan } from "./schedule";
 import { runEvent, type StepCtx } from "./steps";
 import { assertSameWallets, deriveWallet } from "./wallets";
@@ -36,6 +37,16 @@ export interface RunMeta {
 
 const log = (msg: string) => console.log(`[${new Date().toISOString()}] ${msg}`);
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+const isAlive = (pid: number) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === "EPERM"; // exists, owned by someone else
+  }
+};
+/** A tick can run for many silent minutes; say so, or an operator may think the driver hung. */
+const HEARTBEAT_MS = 5 * 60_000;
 
 async function main() {
   const { values } = parseArgs({
@@ -45,6 +56,7 @@ async function main() {
       scale: { type: "string", default: "1" },
       "base-url": { type: "string", default: "http://localhost:3100" },
       seed: { type: "string" },
+      new: { type: "boolean", default: false },
     },
   });
   if (!values.run) throw new Error("--run <dir> is required (e.g. loadtest-runs/full-20261006)");
@@ -52,11 +64,14 @@ async function main() {
   if (!seedHex) throw new Error("LOADTEST_SEED is not set — source .env.loadtest first");
 
   const files = openRunDir(values.run);
+  const release = acquireLock(files.dir, process.pid, isAlive);
+  process.on("exit", release);
   let meta = files.readJson<RunMeta>("run.json");
+  const mode = initMode(meta !== null, values.new!);
   const api = createApi(meta?.baseUrl ?? values["base-url"]!, { cronSecret: process.env.CRON_SECRET || undefined });
   const { agentPublicKey } = await api.agent();
 
-  if (!meta) {
+  if (mode === "init" || !meta) {
     const walletCount = Number(values.wallets);
     const planSeed = values.seed ? Number(values.seed) : parseInt(seedHex.slice(0, 8), 16);
     const plan = buildPlan({ walletCount, seed: planSeed });
@@ -105,8 +120,14 @@ async function main() {
     sleep,
     log,
     exec: async (ev, plannedAt) => {
-      const r = await runEvent(ctx, ev, plannedAt);
-      log(`  ${r.status} ${ev.id}${r.error ? ` — ${r.error}` : ""}`);
+      const t0 = Date.now();
+      const hb = setInterval(() => log(`  … ${ev.id} still running (${Math.round((Date.now() - t0) / 60_000)} min)`), HEARTBEAT_MS);
+      try {
+        const r = await runEvent(ctx, ev, plannedAt);
+        log(`  ${r.status} ${ev.id}${r.error ? ` — ${r.error}` : ""}`);
+      } finally {
+        clearInterval(hb);
+      }
     },
   });
   log(`plan complete (${ran} event(s) this session). Next: npx tsx scripts/loadtest/export.ts --run ${values.run}`);

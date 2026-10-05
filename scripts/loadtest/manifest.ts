@@ -5,7 +5,7 @@
  * (wallet state, finished set) is derived from it, so a crash can never leave
  * two files disagreeing.
  */
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { PlanEvent } from "./schedule";
 
@@ -85,6 +85,27 @@ export function openRunDir(dir: string): RunFiles {
     readJson<T>(name: string): T | null {
       return existsSync(file(name)) ? (JSON.parse(readFileSync(file(name), "utf8")) as T) : null;
     },
+  };
+}
+
+/**
+ * One driver per run dir. Two drivers on the same dir would run the same event
+ * twice — concurrent deploys/authorizes/mints on shared keys (tx_bad_seq) and
+ * duplicate records — breaking the strictly-serial design. A lock whose pid is
+ * no longer alive (kill -9, crash) is taken over. Returns the release function.
+ */
+export function acquireLock(dir: string, pid: number, isAlive: (pid: number) => boolean): () => void {
+  const path = join(dir, "driver.lock");
+  if (existsSync(path)) {
+    const holder = Number(readFileSync(path, "utf8"));
+    if (holder !== pid && Number.isInteger(holder) && isAlive(holder)) {
+      throw new Error(`run dir is locked by a live driver (pid ${holder}) — stop it first, or attach to its tmux window`);
+    }
+  }
+  writeFileSync(path, String(pid));
+  return () => {
+    // Only the current owner removes the lock; a stale holder must not drop a newer one.
+    if (existsSync(path) && readFileSync(path, "utf8") === String(pid)) unlinkSync(path);
   };
 }
 

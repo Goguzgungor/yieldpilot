@@ -8,6 +8,18 @@ export function parseScale(s: string): number {
   return v;
 }
 
+/**
+ * A run is started only with an explicit --new. Without it a missing run.json is
+ * an error, never an implicit init: the full-run command builds its dir from
+ * $(date), so "rerun the same command" after midnight would otherwise start a
+ * second 97-wallet run on the same addresses and abandon the first.
+ */
+export function initMode(hasMeta: boolean, wantNew: boolean): "init" | "resume" {
+  if (hasMeta && wantNew) throw new Error("run dir is already initialised — drop --new to resume it");
+  if (!hasMeta && !wantNew) throw new Error("no run.json in this --run dir — pass --new to start a run, or fix the path to resume one");
+  return hasMeta ? "resume" : "init";
+}
+
 export function dueAt(startedAt: number, atMin: number, timeScale: number): number {
   return startedAt + Math.round(atMin * 60_000 * timeScale);
 }
