@@ -28,15 +28,19 @@ export interface Peak extends PlatePool {
 /** Plate frame in CSS px: summits live between `top` (highest) and `base`. */
 export interface PlateGeometry { W: number; H: number; base: number; top: number; }
 
-/** Heights are scaled to 12% unless the scan itself goes higher. */
-const DEFAULT_CEIL_BPS = 1200;
+/**
+ * Heights are relative to the scan: the highest APY reaches the top of the
+ * plate (the labels carry the exact numbers). The floor keeps a scan of
+ * near-zero yields from being blown up into a dramatic range.
+ */
+const MIN_CEIL_BPS = 600;
 
 export function layoutPeaks(pools: PlatePool[], g: PlateGeometry, riskCap: number): { peaks: Peak[]; capX: number | null } {
   if (!pools.length) return { peaks: [], capX: null };
   const sorted = [...pools].sort((a, b) => a.riskScore - b.riskScore || a.apyBps - b.apyBps || a.id.localeCompare(b.id));
   const n = sorted.length, x0 = g.W * 0.1, x1 = g.W * 0.9;
   const rMin = sorted[0].riskScore, span = Math.max(1, sorted[n - 1].riskScore - rMin);
-  const ceil = Math.max(DEFAULT_CEIL_BPS, ...sorted.map((p) => p.apyBps));
+  const ceil = Math.max(MIN_CEIL_BPS, ...sorted.map((p) => p.apyBps));
 
   const peaks = sorted.map((p, i): Peak => {
     const rankT = n > 1 ? i / (n - 1) : 0.5;

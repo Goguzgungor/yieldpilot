@@ -86,7 +86,13 @@ The **faucet** (`/api/faucet`, `faucet.ts`) mints our testnet USDC SAC (admin = 
 
 ### Frontend
 
-`src/app/page.tsx` + `src/app/_components/*` — a live "network graph" UI (`react-force-graph-2d`), `Onboarding`, `AnalysisPanel`. State streams from `GET /api/events` (SSE, every 2s). Wallet via Freighter (`useFreighter`). Routes are all `dynamic = "force-dynamic"`.
+**Plate I** (`src/app/_components/PlateApp.tsx`): one night sky. The lower part is the *plate* — a dithered stipple range drawn on canvas where every summit is a scanned pool (x = risk rank, height = APY relative to the scan, width = TVL depth; excluded pools dissolve into fog past the risk-cap line; the route summit carries a column of light). The upper part is the *reading area*: one view at a time — visitor / holder overview, a selected pool, setup (onboarding), account, history — over a fixed-height band so the plate never moves. Everything is cream on night; there is no second accent colour.
+
+- Pure, tested geometry and copy live in `src/lib/plate/` (layout, ridge, label declutter, seeded noise) and `src/lib/voice.ts` (agent state + sentences from the activity log). `src/app/**` is excluded from vitest, so keep logic there, not in components.
+- `_components/plate/engine.ts` is the imperative canvas: the dithered print is rebuilt only when the scan signature or viewport changes (`Plate.tsx` keys it on a pool signature, not the polled array); spray, the route beam, the scan sweep and supply "ink" are the living layer. It honours `prefers-reduced-motion` (print only) and freezes when offline.
+- State is plain polling (`useLivingData`: position + activity every 3s, scan every 15s). A real scan in the activity log triggers the labelled sweep; a new supply tx triggers the ink. Neither replays history on page load.
+- "Refresh" only re-reads the cached snapshot — no UI path triggers the agent except onboarding's post-registration `/api/tick` (cheap now that there is no model call).
+- Wallet via Freighter (`useFreighter`). Routes are all `dynamic = "force-dynamic"`.
 
 ## Conventions & gotchas
 

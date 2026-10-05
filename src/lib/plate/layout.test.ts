@@ -47,9 +47,15 @@ describe("layoutPeaks", () => {
     expect(capX!).toBeLessThan(byId.ybx.x);
   });
 
-  it("scales heights to the scan when an APY is above the default ceiling", () => {
+  it("lets the highest APY in the scan reach the top of the plate", () => {
     const hot = layoutPeaks([p("a", 500, 30), p("b", 3000, 40)], G, 65).peaks;
     expect(hot[1].summit).toBeCloseTo(G.top, 5);
+    expect(hot[0].summit).toBeGreaterThan(G.top + (G.base - G.top) * 0.6);
+  });
+
+  it("does not inflate a scan of near-zero yields into a tall range", () => {
+    const flat = layoutPeaks([p("a", 20, 30), p("b", 40, 40)], G, 65).peaks;
+    for (const k of flat) expect(k.summit).toBeGreaterThan(G.top + (G.base - G.top) * 0.75);
   });
 
   it("centres a single pool and draws no cap when nothing crosses it", () => {

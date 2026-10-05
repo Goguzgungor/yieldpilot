@@ -1,7 +1,7 @@
-import LivingNetwork from "./_components/LivingNetwork";
+import PlateApp from "./_components/PlateApp";
 
-// The Living Network is a fully client-rendered, live dashboard (force-graph +
-// SSE + Freighter). Render the client component from this server page.
+// Plate I is fully client-rendered (canvas + polling + Freighter). Render the
+// client component from this server page.
 export default function Home() {
-  return <LivingNetwork />;
+  return <PlateApp />;
 }

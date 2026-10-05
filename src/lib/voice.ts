@@ -26,6 +26,30 @@ export function usdc2(stroops: string | null | undefined): string {
   return (Number(cents) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+export interface VoicePool { protocol: string; name: string; apyBps: number; eligible: boolean }
+
+const pct = (bps: number) => `${(bps / 100).toFixed(2)}%`;
+const bare = (p: VoicePool) => p.name.replace(/^DeFindex\s+/i, "").replace(/^Blend\s+/i, "").trim() || p.name;
+// non-breaking around the dot: a route name never wraps mid-way
+const routeLabel = (p: VoicePool) => `${PROTOCOL_NAMES[p.protocol] ?? p.protocol}\u00a0·\u00a0${bare(p)}`;
+
+/**
+ * The agent's standing sentence while it holds: the route, and the higher yield
+ * it is deliberately passing over. Short enough to read at a glance — the full
+ * rationale lives on the pool's page. Null for an empty scan.
+ */
+export function routeVoice(pools: VoicePool[]): string | null {
+  if (!pools.length) return null;
+  const ok = pools.filter((p) => p.eligible);
+  if (!ok.length) return "No pool clears the risk cap right now, so the agent holds.";
+  const best = ok.reduce((a, b) => (b.apyBps > a.apyBps ? b : a));
+  const higher = pools.filter((p) => !p.eligible && p.apyBps > best.apyBps);
+  const lead = `${routeLabel(best)} is the best eligible route at ${pct(best.apyBps)}.`;
+  if (!higher.length) return lead;
+  const skipped = higher.reduce((a, b) => (b.apyBps > a.apyBps ? b : a));
+  return `${lead} ${bare(skipped)} pays ${pct(skipped.apyBps)} but sits past the cap.`;
+}
+
 function supplyOf(r: ActivityRow): { hash: string; amount?: string } | null {
   if (r.kind !== "peruser" && r.kind !== "rebalance") return null;
   if (!r.meta) return null;
@@ -44,6 +68,8 @@ export function agentStatus(i: {
   offline: boolean;
   coldStart: boolean;
   rationale: string | null;
+  /** The standing route sentence (see routeVoice); preferred over the rationale while holding. */
+  routeVoice?: string | null;
   poolCount: number;
   protocols: string[];
 }): AgentStatus {
@@ -63,5 +89,5 @@ export function agentStatus(i: {
     }
     if (latest.kind === "scan") return { state: "SCANNING", voice: `Reading ${watching}.` };
   }
-  return { state: "HOLDING", voice: i.rationale ?? `Watching ${watching}.` };
+  return { state: "HOLDING", voice: i.routeVoice ?? i.rationale ?? `Watching ${watching}.` };
 }

@@ -7,6 +7,12 @@ export interface LivingData {
   pools: ApiScoredPool[];
   /** Epoch-ms of the last persisted scan snapshot; null on cold first run. */
   scanUpdatedAt: number | null;
+  /** Epoch-ms when the next agent tick is due; null if unknown. */
+  nextTickAt: number | null;
+  /** Max risk score an eligible pool may have (from the configured tolerance). */
+  riskCap: number;
+  /** Epoch-ms of the last successful poll; 0 until the first one. */
+  lastOkAt: number;
   position: ApiPosition | null;
   activity: ActivityEntry[];
   loading: boolean;
@@ -34,6 +40,9 @@ const SCAN_POLL_MS = 15_000;
 export function useLivingData(): LivingData {
   const [pools, setPools] = useState<ApiScoredPool[]>([]);
   const [scanUpdatedAt, setScanUpdatedAt] = useState<number | null>(null);
+  const [nextTickAt, setNextTickAt] = useState<number | null>(null);
+  const [riskCap, setRiskCap] = useState(65);
+  const [lastOkAt, setLastOkAt] = useState(0);
   const [position, setPosition] = useState<ApiPosition | null>(null);
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
   // loading is true only while the very first fetch is in-flight.
@@ -44,12 +53,16 @@ export function useLivingData(): LivingData {
   const scanTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastLogTs = useRef<number>(0);
 
+  const applyScan = (data: ApiScanResponse) => {
+    setPools(data.pools);
+    setScanUpdatedAt(data.updatedAt ?? null);
+    setNextTickAt(data.nextTickAt ?? null);
+    if (typeof data.riskCap === "number") setRiskCap(data.riskCap);
+  };
+
   const refetchScan = useCallback(async () => {
     const data = await getJson<ApiScanResponse>("/api/scan");
-    if (data && Array.isArray(data.pools)) {
-      setPools(data.pools);
-      setScanUpdatedAt(data.updatedAt ?? null);
-    }
+    if (data && Array.isArray(data.pools)) applyScan(data);
   }, []);
 
   const refetchPosition = useCallback(async () => {
@@ -73,10 +86,8 @@ export function useLivingData(): LivingData {
         getJson<ActivityEntry[]>("/api/activity"),
       ]);
       if (cancelled) return;
-      if (scan && Array.isArray(scan.pools)) {
-        setPools(scan.pools);
-        setScanUpdatedAt(scan.updatedAt ?? null);
-      }
+      if (scan || pos || Array.isArray(act)) setLastOkAt(Date.now());
+      if (scan && Array.isArray(scan.pools)) applyScan(scan);
       if (pos) setPosition(pos);
       if (Array.isArray(act)) {
         setActivity(act);
@@ -100,7 +111,7 @@ export function useLivingData(): LivingData {
         getJson<ActivityEntry[]>("/api/activity"),
       ]);
       if (cancelled) return;
-      if (pos || Array.isArray(act)) setConnected(true);
+      if (pos || Array.isArray(act)) { setConnected(true); setLastOkAt(Date.now()); }
       if (pos) setPosition(pos);
       if (Array.isArray(act)) {
         setActivity(act);
@@ -137,5 +148,5 @@ export function useLivingData(): LivingData {
     void refetchPosition();
   }, [flashScanning, refetchScan, refetchPosition]);
 
-  return { pools, scanUpdatedAt, position, activity, loading, scanning, connected, rescan };
+  return { pools, scanUpdatedAt, nextTickAt, riskCap, lastOkAt, position, activity, loading, scanning, connected, rescan };
 }

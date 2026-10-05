@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { agentStatus, usdc2, type ActivityRow } from "./voice";
+import { agentStatus, routeVoice, usdc2, type ActivityRow } from "./voice";
 
 const NOW = 1_800_000_000;
 const row = (kind: string, ageSec: number, meta: object | null = null, message = ""): ActivityRow =>
@@ -59,5 +59,28 @@ describe("usdc2", () => {
     expect(usdc2("15")).toBe("0.00");
     expect(usdc2(null)).toBe("0.00");
     expect(usdc2("12345678")).toBe("1.23");
+  });
+});
+
+describe("routeVoice", () => {
+  const pool = (name: string, apyBps: number, eligible = true, protocol = "blend") => ({ protocol, name, apyBps, eligible });
+
+  it("names the route and the higher yield it passes over", () => {
+    expect(routeVoice([pool("Fixed", 671), pool("YieldBlox", 806, false), pool("DeFindex XLM Fixed", 0, true, "defindex")]))
+      .toBe("Blend\u00a0·\u00a0Fixed is the best eligible route at 6.71%. YieldBlox pays 8.06% but sits past the cap.");
+  });
+
+  it("is just the route when nothing excluded pays more", () => {
+    expect(routeVoice([pool("Fixed", 671), pool("Orbit", 300, false)])).toBe("Blend\u00a0·\u00a0Fixed is the best eligible route at 6.71%.");
+  });
+
+  it("says so when nothing is eligible, and is null for an empty scan", () => {
+    expect(routeVoice([pool("YieldBlox", 806, false)])).toMatch(/no pool clears/i);
+    expect(routeVoice([])).toBeNull();
+  });
+
+  it("is what the agent says while holding", () => {
+    const s = agentStatus({ ...base, routeVoice: "route sentence", activity: [] });
+    expect(s.voice).toBe("route sentence");
   });
 });

@@ -8,7 +8,6 @@ const nextConfig = {
     "mongodb",
     "@stellar/stellar-sdk",
     "@blend-capital/blend-sdk",
-    "@anthropic-ai/sdk",
   ],
 };
 

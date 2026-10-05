@@ -19,6 +19,8 @@ export interface RegisteredUser {
   usdcRuleId: number;
   createdAt: number;
   position: { poolId: string | null; amountUsdc: string };
+  /** Unsupplied USDC in the smart account (decimal stroops); null if unreadable. */
+  idleUsdc?: string | null;
 }
 
 interface AgentInfo {
