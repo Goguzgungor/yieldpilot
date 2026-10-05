@@ -1,7 +1,7 @@
 /**
  * End-to-end probe of the serverless scan path: exactly what `/api/scan` runs
  * lazily on first load — ensurePoolIds (mainnet discovery) → scan (Blend +
- * DeFindex) → score → cache to Mongo → LLM decide → cache. NO fund movement.
+ * DeFindex) → score → cache to Mongo → decide → cache. NO fund movement.
  * Then reads the cached snapshot back the way the route handler does. Run:
  *   npx tsx scripts/probe-scan-refresh.ts
  */
