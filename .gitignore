@@ -13,3 +13,6 @@ scripts/spike-artifacts/
 ys-*.png
 yieldseeker-final.png
 scripts/blend-utils
+loadtest-runs/
+.env.loadtest
+.env.prod.local
