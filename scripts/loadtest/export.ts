@@ -18,7 +18,7 @@ import * as registry from "../../src/lib/registry";
 import { readSpendingLimitData } from "../../src/lib/smartAccount";
 import { simulateCall, TESTNET_PASSPHRASE } from "./chain";
 import { openRunDir, walletStates } from "./manifest";
-import { collectHashes, horizonAccountTxs, parseActivity, rpcGetTransaction, summarize } from "./report";
+import { activityHashes, collectHashes, horizonAccountTxs, parseActivity, rpcGetTransaction, runWindow, summarize } from "./report";
 import type { RunMeta } from "./run";
 import type { Plan } from "./schedule";
 
@@ -39,22 +39,37 @@ async function main() {
 
   const rpcUrl = process.env.EXEC_RPC_URL ?? "https://soroban-testnet.stellar.org";
   const server = new rpc.Server(rpcUrl);
-  const sinceIso = new Date(meta.startedAt - 3_600_000).toISOString().replace(/\.\d{3}Z$/, "Z");
+  const window = runWindow(meta, recs);
   const owners = files.readJson<Array<{ index: number; owner: string }>>("wallets.json")!;
+  console.log(`window: ${window.sinceIso} → ${window.untilIso}`);
 
-  // 1. Horizon: all txs of the dedicated agent (authorize + every supply, including
-  //    the ones only the server saw) and of every wallet G.
+  // 1. Off-chain first: the server's activity log (supply hashes, skip reasons,
+  //    tick failures, every faucet mint) and registry — same MONGODB_DB the server used.
+  const rows = (await createDb().recentLog(1_000_000))
+    .filter((r) => r.ts * 1000 >= window.sinceMs && r.ts * 1000 <= window.untilMs)
+    .reverse();
+  files.writeJsonl("offchain/activity.jsonl", rows);
+  const activity = parseActivity(rows);
+  const users = await registry.listUsers();
+  files.writeJson(
+    "offchain/users.json",
+    plain(await Promise.all(users.map(async (u) => ({ ...u, position: await registry.getUserPosition(u.smartWallet) })))),
+  );
+
+  // 2. Horizon: all txs (incl. failed) of the dedicated agent (authorize + every
+  //    supply) and of every wallet G, inside the run window.
   const horizon = new Map<string, Record<string, unknown>>();
   const add = (source: string, txs: Array<{ hash: string }>) => {
     for (const t of txs) if (!horizon.has(t.hash)) horizon.set(t.hash, { _source: source, ...t });
   };
-  add("agent", await horizonAccountTxs(meta.agentPublicKey, sinceIso));
-  for (const w of owners) add(`wallet:${w.index}`, await horizonAccountTxs(w.owner, sinceIso));
+  add("agent", await horizonAccountTxs(meta.agentPublicKey, window));
+  for (const w of owners) add(`wallet:${w.index}`, await horizonAccountTxs(w.owner, window));
   files.writeJsonl("chain/horizon-transactions.jsonl", [...horizon.values()]);
   console.log(`horizon: ${horizon.size} txs`);
 
-  // 2. RPC: raw XDR for every hash we know (driver-recorded ∪ Horizon), 4 at a time.
-  const hashes = [...new Set([...collectHashes(recs), ...horizon.keys()])];
+  // 3. RPC: raw XDR for every hash we know — driver-recorded ∪ Horizon ∪ server
+  //    activity (the faucet admin's mints are only reachable this way), 4 at a time.
+  const hashes = [...new Set([...collectHashes(recs), ...horizon.keys(), ...activityHashes(activity)])];
   const raw: Array<Record<string, unknown>> = [];
   for (let i = 0; i < hashes.length; i += 4) {
     raw.push(...(await Promise.all(hashes.slice(i, i + 4).map((h) => rpcGetTransaction(rpcUrl, h)))));
@@ -63,7 +78,7 @@ async function main() {
   const rpcNotFound = raw.filter((r) => r.status === "NOT_FOUND").length;
   console.log(`rpc: ${raw.length} txs (${rpcNotFound} NOT_FOUND)`);
 
-  // 3. Final per-wallet state.
+  // 4. Final per-wallet state.
   const pool = await PoolV2.load({ rpc: rpcUrl, passphrase: TESTNET_PASSPHRASE }, process.env.EXEC_POOL_ID ?? EXEC_POOL_ID);
   const reserve = pool.reserves.get(meta.usdcSac);
   const finalState: unknown[] = [];
@@ -88,17 +103,7 @@ async function main() {
   }
   files.writeJson("state/final-wallets.json", plain(finalState));
 
-  // 4. Off-chain: the server's activity log (supply hashes, skip reasons, tick
-  //    failures) and registry — same MONGODB_DB the server used.
-  const rows = (await createDb().recentLog(1_000_000)).filter((r) => r.ts >= meta.startedAt / 1000 - 3600).reverse();
-  files.writeJsonl("offchain/activity.jsonl", rows);
-  const users = await registry.listUsers();
-  files.writeJson(
-    "offchain/users.json",
-    plain(await Promise.all(users.map(async (u) => ({ ...u, position: await registry.getUserPosition(u.smartWallet) })))),
-  );
-
-  const summary = { ...summarize(plan, recs, parseActivity(rows)), chain: { horizonTxs: horizon.size, rpcTxs: raw.length, rpcNotFound } };
+  const summary = { ...summarize(plan, recs, activity), chain: { horizonTxs: horizon.size, rpcTxs: raw.length, rpcNotFound } };
   files.writeJson("summary.json", summary);
   print(summary);
 }

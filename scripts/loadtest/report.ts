@@ -1,7 +1,7 @@
 /** Pure(ish) export helpers — network access is injectable for tests. */
 import { HORIZON_URL, type FetchLike } from "./chain";
 import type { EventStatus, ManifestRecord } from "./manifest";
-import { COHORT_ORDER, type Cohort, type Plan } from "./schedule";
+import { COHORT_ORDER, RUN_MIN, type Cohort, type Plan } from "./schedule";
 
 export function collectHashes(recs: ManifestRecord[]): string[] {
   return [...new Set(recs.flatMap((r) => r.hashes))];
@@ -9,10 +9,40 @@ export function collectHashes(recs: ManifestRecord[]): string[] {
 
 export type HorizonTx = { hash: string; created_at: string } & Record<string, unknown>;
 
-/** Every tx of `address` since `sinceIso`, oldest first, following Horizon's next links. */
-export async function horizonAccountTxs(address: string, sinceIso: string, fetchFn: FetchLike = fetch): Promise<HorizonTx[]> {
+export interface RunWindow {
+  sinceMs: number;
+  untilMs: number;
+  sinceIso: string;
+  untilIso: string;
+}
+
+const isoSeconds = (ms: number) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, "Z");
+
+/**
+ * The time span whose chain/off-chain data belongs to this run. It opens 2 min
+ * before startedAt (clock skew only — the smoke run shares the load-test agent
+ * and ends ~15 min before T0, so it must stay outside) and closes 15 min after
+ * the later of the plan's end and the last finished event (driver lag).
+ */
+export function runWindow(meta: { startedAt: number; timeScale: number }, recs: ManifestRecord[]): RunWindow {
+  const lastFinished = Math.max(0, ...recs.map((r) => (r.type === "event" ? r.finishedAt : 0)));
+  const sinceMs = meta.startedAt - 120_000;
+  const untilMs = Math.max(meta.startedAt + Math.round(RUN_MIN * 60_000 * meta.timeScale), lastFinished) + 900_000;
+  return { sinceMs, untilMs, sinceIso: isoSeconds(sinceMs), untilIso: isoSeconds(untilMs) };
+}
+
+/**
+ * Every tx of `address` inside the window, oldest first, following Horizon's
+ * next links. include_failed: Horizon hides failed txs by default, and failed
+ * supplies/authorizes/mints are exactly what a load test needs to see.
+ */
+export async function horizonAccountTxs(
+  address: string,
+  window: Pick<RunWindow, "sinceIso" | "untilIso">,
+  fetchFn: FetchLike = fetch,
+): Promise<HorizonTx[]> {
   const out: HorizonTx[] = [];
-  let url = `${HORIZON_URL}/accounts/${address}/transactions?order=asc&limit=200`;
+  let url = `${HORIZON_URL}/accounts/${address}/transactions?order=asc&limit=200&include_failed=true`;
   for (;;) {
     const res = await fetchFn(url);
     if (res.status === 404) return out;
@@ -20,7 +50,10 @@ export async function horizonAccountTxs(address: string, sinceIso: string, fetch
     const body = (await res.json()) as { _embedded: { records: HorizonTx[] }; _links: { next: { href: string } } };
     const page = body._embedded.records;
     if (!page.length) return out;
-    out.push(...page.filter((t) => t.created_at >= sinceIso));
+    for (const t of page) {
+      if (t.created_at > window.untilIso) return out; // ascending order: nothing later belongs to this run
+      if (t.created_at >= window.sinceIso) out.push(t);
+    }
     url = body._links.next.href;
   }
 }
@@ -59,6 +92,16 @@ export function parseActivity(rows: Array<{ ts: number; kind: string; message: s
   });
 }
 
+/** Tx hashes the server logged (faucet txHash, onboard hash, per-user supply hashes[]). */
+export function activityHashes(entries: ActivityEntry[]): string[] {
+  const out = new Set<string>();
+  for (const a of entries) {
+    for (const k of ["txHash", "hash"]) if (typeof a.meta?.[k] === "string") out.add(a.meta[k] as string);
+    if (Array.isArray(a.meta?.hashes)) for (const h of a.meta.hashes) if (typeof h === "string") out.add(h);
+  }
+  return [...out];
+}
+
 export interface CohortSummary {
   wallets: number;
   onboarded: number;
@@ -76,6 +119,12 @@ export interface Summary {
   maxLagMs: number;
   cohorts: Record<Cohort, CohortSummary>;
   ticks: { ok: number; failed: number; avgDurationMs: number; maxDurationMs: number; serverTickFailures: number };
+  /**
+   * Faucet mints the server logged but the driver never recorded (a kill or reset
+   * mid-request, then a replay). Their USDC is missing from mintedUsdc. null
+   * without the activity log.
+   */
+  unrecordedMints: number | null;
 }
 
 const MINT_STEPS = new Set(["fund", "mint-sa", "mint-g"]);
@@ -130,6 +179,12 @@ export function summarize(plan: Plan, recs: ManifestRecord[], activity: Activity
     if (a.kind === "error") c.supplyErrors++;
   }
 
+  const recorded = new Set(collectHashes(recs));
+  const unrecordedMints =
+    activity === null
+      ? null
+      : activity.filter((a) => a.kind === "faucet" && typeof a.meta?.txHash === "string" && !recorded.has(a.meta.txHash)).length;
+
   const total = tickDurations.reduce((s, d) => s + d, 0);
   return {
     activityIncluded: activity !== null,
@@ -143,5 +198,6 @@ export function summarize(plan: Plan, recs: ManifestRecord[], activity: Activity
       maxDurationMs: tickDurations.length ? Math.max(...tickDurations) : 0,
       serverTickFailures,
     },
+    unrecordedMints,
   };
 }
