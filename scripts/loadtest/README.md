@@ -5,7 +5,7 @@ Plan + rationale: `docs/superpowers/plans/2026-10-05-onchain-loadtest-97-wallets
 ## One-time env (`.env.loadtest`, gitignored)
 
 ```bash
-vercel link                                           # the yieldseeker project
+vercel link                                           # the yieldpilot project
 vercel env pull .env.prod.local --environment=production
 stellar keys generate ys-loadtest-agent --network testnet --fund
 {

@@ -219,7 +219,7 @@ export default function PlateApp() {
           </div>
         </>
       )}
-      <div className="signature" aria-hidden="true">YieldSeeker · Plate I</div>
+      <div className="signature" aria-hidden="true">YieldPilot · Plate I</div>
       <div className="grain" aria-hidden="true" />
     </main>
   );

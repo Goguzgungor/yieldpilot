@@ -1,5 +1,5 @@
 /**
- * On-chain load test driver — N wallets × 24 h against a running YieldSeeker.
+ * On-chain load test driver — N wallets × 24 h against a running YieldPilot.
  *
  *   set -a; source .env.loadtest; set +a
  *   caffeinate -dimsu npx tsx scripts/loadtest/run.ts --run loadtest-runs/<id> --new \

@@ -1,11 +1,11 @@
 /**
- * Typed client for the YieldSeeker routes the onboarding UI calls
+ * Typed client for the YieldPilot routes the onboarding UI calls
  * (src/app/_components/useOnboarding.ts), plus /api/tick and the read routes
  * used for snapshots. The load test drives the product only through these.
  */
 import { requestJson, type JsonResponse } from "./http";
 
-/** A non-2xx (or unreachable, status 0) answer from a YieldSeeker route. */
+/** A non-2xx (or unreachable, status 0) answer from a YieldPilot route. */
 export class ApiError extends Error {
   constructor(
     readonly route: string,
