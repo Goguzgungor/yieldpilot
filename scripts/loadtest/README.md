@@ -19,7 +19,7 @@ stellar keys generate ys-loadtest-agent --network testnet --fund
 mkdir -p loadtest-runs
 ```
 Later lines win when sourced. If `vercel env pull` returns empty sensitive values, fill
-`STELLAR_WALLET_MNEMONIC`, `MONGODB_URI` and `ANTHROPIC_API_KEY` by hand.
+`STELLAR_WALLET_MNEMONIC` and `MONGODB_URI` by hand.
 
 ## Server (tmux window 1)
 
