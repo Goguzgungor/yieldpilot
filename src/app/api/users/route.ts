@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { listUsers, getUserWithPosition } from "../../../lib/runtime";
+import { listUsers, getUserWithPosition, getIdleUsdc } from "../../../lib/runtime";
 
 export const dynamic = "force-dynamic";
 
@@ -9,13 +9,15 @@ export const dynamic = "force-dynamic";
  *
  * Each user row is { owner, smartWallet, poolRuleId, usdcRuleId, createdAt,
  * position: { poolId, amountUsdc } } with amountUsdc as a decimal stroop string.
+ * The single-owner form also carries `idleUsdc`: the smart account's unsupplied
+ * USDC (decimal stroops, or null if unreadable) — what the agent supplies next.
  */
 export async function GET(req: Request) {
   const owner = new URL(req.url).searchParams.get("owner");
   if (owner) {
     const user = await getUserWithPosition(owner);
     if (!user) return NextResponse.json({ error: "not registered" }, { status: 404 });
-    return NextResponse.json(user);
+    return NextResponse.json({ ...user, idleUsdc: await getIdleUsdc(user.smartWallet) });
   }
   return NextResponse.json({ users: await listUsers() });
 }

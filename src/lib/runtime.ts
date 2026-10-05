@@ -19,7 +19,8 @@ import { createSorobanClient, createExecutor, type Executor } from "./executor";
 import { createKeypairWallet, createPolicySignerWallet } from "./wallet";
 import { decide } from "./agent";
 import { runTick, runPerUserExecution } from "./orchestrator";
-import { scorePools, bestPool } from "./risk";
+import { scorePools, bestPool, MAX_RISK } from "./risk";
+import { nextTickAt } from "./cadence";
 import type { UserRegistration, TxResult } from "./types";
 import {
   serializePosition,
@@ -520,6 +521,19 @@ export async function listUsers(): Promise<Array<UserRegistration & { position: 
   );
 }
 
+/**
+ * A smart account's idle (unsupplied) USDC, stroops as a decimal string, or null
+ * when it can't be read (e.g. the runtime can't boot without its env). One
+ * read-only simulation on testnet; no signing.
+ */
+export async function getIdleUsdc(smartWallet: string): Promise<string | null> {
+  try {
+    return (await readUsdcBalance(getRuntime(), smartWallet)).toString();
+  } catch {
+    return null;
+  }
+}
+
 /** One user's registration + position by owner, or null if not registered. */
 export async function getUserWithPosition(
   owner: string,
@@ -570,6 +584,10 @@ export interface ScanSnapshot {
   pools: SerializedScoredPool[];
   /** Epoch-ms when the snapshot was last written; null on a true cold start. */
   updatedAt: number | null;
+  /** Epoch-ms when the next agent tick is due (see cadence.ts); null if unknown. */
+  nextTickAt: number | null;
+  /** Max risk score an eligible pool may have under the configured tolerance. */
+  riskCap: number;
 }
 
 /**
@@ -586,16 +604,26 @@ export async function getLastScan(): Promise<ScanSnapshot> {
   const raw = await rt.db.getKV("lastScan");
   const atRaw = await rt.db.getKV("lastScanAt");
   const updatedAt = atRaw ? Number(atRaw) || null : null;
+  const meta = {
+    updatedAt,
+    nextTickAt: nextTickAt({
+      serverless: Boolean(process.env.VERCEL),
+      now: Date.now(),
+      lastScanAt: updatedAt,
+      intervalSec: rt.cfg.scanIntervalSec,
+    }),
+    riskCap: MAX_RISK[rt.cfg.tolerance],
+  };
 
   if (raw) {
     try {
       const pools = JSON.parse(raw) as SerializedScoredPool[];
-      return { pools, updatedAt };
+      return { pools, ...meta };
     } catch {
       // corrupt entry; fall through to in-memory copy
     }
   }
-  return { pools: serializeScoredPools(rt.lastScan), updatedAt };
+  return { pools: serializeScoredPools(rt.lastScan), ...meta };
 }
 
 /**
