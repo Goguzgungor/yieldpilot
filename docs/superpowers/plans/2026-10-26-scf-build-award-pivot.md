@@ -14,6 +14,22 @@ YieldPilot'ı bugünkü haliyle ("en yüksek APY'li Blend havuzuna otomatik taş
 
 Ürün adı YieldPilot kalır, çünkü pilot ile fırlatma koltuğu metaforu birbirini tutuyor. Ayrıca Ekim 2026'daki isim değişikliğinin kimlik maliyetini (DB adı, demo-owner seed) tekrar ödemeyiz.
 
+### Ekip ve SCF geçmişi
+
+- **Göktuğ Oğuz Güngör:** İş Bankası'nda çalışıyor. YieldPilot'ın bu proje için aldığı Instaward'ın sahibi.
+- **Melike Keçelioğlu:** Hourglass Protocol ile Instaward almış.
+- **Bu, ekibin ilk SCF Build Award başvurusu.** 3 ret / 3 tur yasağı riski yok.
+
+Bunun başvuruya etkileri:
+
+1. **Instaward en güçlü "track record" kanıtımız.** Rehberin istediği "Stellar'da daha önce iş teslim ettik" kanıtı bu. Başvuruda iki Instaward da sprint çıktılarıyla birlikte yazılır: neyin teslim edildiği ve linkleri.
+2. **Önce Instaward sprint'leri kapanmalı.** Prescreen'de "outstanding unfulfilled grants" uygunluk kontrolü var. Instaward'da ilerleme "agreed deliverables"a göre ölçülüyor. Build Award gönderilmeden önce iki sprint de Chapter Lead tarafından kabul edilmiş olmalı.
+3. **Pivotu Instaward hikâyesinin devamı olarak anlatmak.** Instaward YieldPilot'ın getiri ajanı için alındı. Anlatı şöyle kurulur: "Instaward sprint'inde kullanıcı başına smart account yürütmesini ve 97 cüzdan testini teslim ettik. Sertleştirirken ajan yetkisindeki açığı bulduk, YieldBlox olayını inceledik ve ürünü korumaya çevirdik." Bu bir chain-hop değil, öğrenilmiş bir evrim. **Pivotu önce Chapter Lead ile konuşmak gerek**, çünkü projeyi onaylayan ve doğal referrer'ımız olan kişi o.
+4. **Referral.** Ambassador'lar onaylı referrer olabiliyor. Chapter Lead onaylı ve onboard edilmiş bir referrer'sa, Interest Form'a girilecek referral kodunu ondan istemek gerekir. Referral avantaj sağlamaz ama ekibi tanıtır ve bağlam ekler.
+5. **Follow-on Instaward.** Kurallar en fazla 2 follow-on disbursement'a izin veriyor (toplam üst sınır $15K, ayrı ve iyi kapsamlanmış bir sprint şartıyla). §7'deki exit-only policy spike'ı ve YieldBlox replay'i tam olarak 30 günlük böyle bir sprint. Bu sprint follow-on Instaward ile fonlanabilir. Instaward'ın Build Award ömür boyu üst sınırına sayılıp sayılmadığı kurallarda yazmıyor, ama ~$75K'lık talepte bu fark etmez.
+6. **İşveren ve zaman taahhüdü.** Reviewer'lar ekibin ne kadar zaman ayıracağına bakar. Göktuğ tam zamanlı çalışıyorsa bütçede efor yarı zamanlı ve dürüst yazılmalı. Bankacılık deneyimi risk motoru ve kurumsal hazine personası için güçlü bir kredi. Ancak başvuruda İş Bankası bir kurum ya da ortak gibi gösterilmemeli, yalnızca kişisel deneyim olarak yazılmalı. Ayrıca iş sözleşmesinin ücretli dış iş ve kripto faaliyetine izin verdiği teyit edilmeli, çünkü ödül KYC sonrası kişiye ödeniyor.
+7. **Hourglass'ın konumu netleşmeli.** Melike Hourglass'a devam ediyorsa zamanının ne kadarını buraya ayıracağı yazılmalı. İki proje birleşiyorsa ilişki başvuruda açıkça anlatılmalı. Prescreen'de "aynı proje farklı isimle" kontrolü var.
+
 ---
 
 ## 2. Teşhis: bugünkü repo SCF gözüyle
@@ -28,7 +44,7 @@ YieldPilot'ı bugünkü haliyle ("en yüksek APY'li Blend havuzuna otomatik taş
 | 6 | **README tek satır**, LICENSE yok, mimari diyagram yok. | Prescreen reviewer'ı GitHub'a bakınca boş sayfa görür. "Smart contracts must have an open-source plan." | README, Apache-2.0, Mermaid diyagram, demo videosu, canlı testnet linki. |
 | 7 | **Kendi Soroban kontratımız yok.** Sadece OZ ve Blend kontratlarını çağırıyoruz. | Open Track: "Show Soroban-native design", "No Soroban usage" kırmızı bayrak. | Exit-only policy, projenin çekirdek kontratı olur. |
 | 8 | **Yürütme mimarisi korumaya uygun değil.** Vercel'deki günlük cron tick ve tek kaynak hesap (sequence çakışması) var. | Saniyeler içinde tepki gerekiyor. Günlük tick işe yaramaz. | Uzun ömürlü bir watcher worker, ledger/event akışı ve kanal hesaplar (paralel tx). |
-| 9 | **Traction yok.** 97 cüzdanlık testnet yük testi teknik bir kanıt, kullanıcı kanıtı değil. Ekip isimsiz. ETHGlobal finalistliğinin linki yok. | "Named, credible team", "evidence of demand". | İsimli ekip ve linkler. Blend tedarikçileriyle görüşmeler, waitlist ve en az 1 cüzdan veya DAO'dan LOI. |
+| 9 | **Traction yok.** 97 cüzdanlık testnet yük testi teknik bir kanıt, kullanıcı kanıtı değil. Repoda ekip bilgisi yok. ETHGlobal finalistliğinin linki yok. | "Named, credible team", "evidence of demand". | Ekip (§1) ve iki Instaward'ın çıktıları README'ye. Blend tedarikçileriyle görüşmeler, waitlist ve en az 1 cüzdan veya DAO'dan LOI. |
 
 ---
 
@@ -140,7 +156,9 @@ Getiri yönlendirme (`bestPool`) repoda kalır ama **SCF kapsamının dışında
 | Altyapı (2 RPC sağlayıcı, 2 bölge worker, 6 ay) | — | — | $2.000 |
 | **Toplam** | | | **$75.000** |
 
-Tranche'lar sabit: T0 $7.5K (onayda) / T1 $15K / T2 $22.5K / T3 $30K. Rakamlar ekip gerçek oranlarıyla `scf-budget-builder` skill'inden geçirilecek.
+Tranche'lar sabit: T0 $7.5K (onayda) / T1 $15K / T2 $22.5K / T3 $30K.
+
+**Roller henüz kişilere atanmadı.** Rollerin kime düşeceği Göktuğ'un ve Melike'nin becerilerine ve haftalık saatlerine bağlı. Örneğin Göktuğ %50 çalışıyorsa full-stack satırı "20 hf × %50" diye yazılır ve takvim buna göre uzar. Ekipte kimsenin karşılamadığı bir rol (örneğin UI/UX) varsa bu kişi bütçede "yüklenici" olarak gösterilir. Rakamlar gerçek saatlerle `scf-budget-builder` skill'inden geçirilecek.
 
 ### T1 — MVP (Stellar ile etkileşen gerçek kod)
 1. **Exit-only policy v1.** Rust/Soroban kontratı, ≥%90 satır kapsamalı unit ve property testleri, testnet deploy. *Tamamlanma:* kontrat adresi ve repo. Testnet'te izinli çağrı (Withdraw → SA) geçer. Yasaklı dört çağrı (Borrow, Supply, `to ≠ SA`, USDC transfer) reddedilir. Dört tx hash'i paylaşılır.
@@ -179,8 +197,10 @@ Bu işler fonlanmaz (geçmiş iş geri ödenmez) ama Interest Form'u ve prescree
 
 ### Senin yapman gerekenler (yalnızca sen yapabilirsin)
 
-- **Ekip:** isimler, roller, GitHub/LinkedIn linkleri. ETHGlobal finalistliğinin doğrulanabilir linki. Herkes KYC/KYB'ye uygun olmalı.
-- **Geçmiş:** daha önce SCF'ye başvurdun mu? 3 ret, 3 tur yasak getiriyor. Açık bir hibe borcu var mı?
+- **Instaward:** iki sprint'in kabul edilmiş deliverable'ları ve linkleri. Hâlâ açık bir şey varsa önce o kapatılır.
+- **Chapter Lead ile görüşme:** pivot, referral kodu ve follow-on Instaward (spike + replay sprint'i).
+- **Ekip bilgisi:** iki kişinin rolleri, becerileri ve haftalık saatleri. GitHub/LinkedIn linkleri. ETHGlobal finalistliğinin doğrulanabilir linki. İş sözleşmesinin dış işe izin verdiğinin teyidi.
+- **Hourglass:** ne yaptığı ve bu projeyle ilişkisi (ayrı mı devam ediyor, birleşiyor mu).
 - **Talep kanıtı:** Blend ve YieldBlox tedarikçileriyle 10–15 görüşme (Blend Discord, Stellar Dev Discord). Waitlist sayısı ve toplama süresi. Bir cüzdan, DAO hazinesi veya fon yöneticisinden LOI.
 - **Topluluk:** Stellar Dev Discord `#scf-general`'da fikri paylaşıp geri bildirim almak. **Blend (Script3) ekibiyle erken görüşmek**, çünkü toplu çıkışın "bank run" etkisi kaygısını onlarla birlikte yanıtlamak gerek (§9). Bir referrer kodu (Ambassador, Pilot, alumni).
 - **İsim kararı:** "YieldPilot Eject" mi, başka bir ad mı?
@@ -194,7 +214,8 @@ Bu işler fonlanmaz (geçmiş iş geri ödenmez) ama Interest Form'u ve prescree
   - **1. hafta:** iş 1–4. Interest Form, policy spike'ının tx hash'leriyle birlikte gönderilir.
   - **2. hafta:** iş 5–6, Discord ve Blend görüşmeleri, referral.
   - **Davet gelince:** Build Award taslağı, prescreen simülasyonu, dış okuyucu, gönderim.
-- **İsteğe bağlı:** yerel Ambassador Chapter üzerinden **Instaward** ($1–5K, ~30 günlük sprint) ile spike ve replay işi fonlanabilir. Build Award'ı engellemez.
+- **Ön koşul:** iki Instaward sprint'i kapanmış ve Chapter Lead pivottan haberdar olmalı. Bu adım 1. haftanın başında yapılır.
+- **Follow-on Instaward:** spike ve replay işi ayrı bir 30 günlük sprint olarak Chapter Lead'e önerilir. Kabul edilirse bu iş fonlanır ve teslimi Build Award'da ikinci bir track record kanıtı olur.
 
 ---
 
