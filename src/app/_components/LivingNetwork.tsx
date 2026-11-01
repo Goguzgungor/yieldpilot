@@ -115,7 +115,7 @@ export default function LivingNetwork() {
             <i />
           </div>
           <div className="ys-title-pill" title="Autonomous DeFi yield agent">
-            <b>YieldSeeker</b>
+            <b>YieldPilot</b>
             <span>· Stellar</span>
             <span className="ys-tagline">· autonomous agent</span>
           </div>
@@ -160,7 +160,7 @@ export default function LivingNetwork() {
           {/* status readout */}
           <div className="ys-note">
             {loading
-              ? "Connecting to YieldSeeker…"
+              ? "Connecting to YieldPilot…"
               : pools.length === 0
                 ? "First scan in progress — agent discovering pools…"
                 : `live network — agent watching ${pools.length} mainnet pool${
@@ -301,7 +301,7 @@ function EmptyStage({ loading }: { loading: boolean }) {
       <div className="ys-cloud" />
       <div className="ys-center">
         <div className={loading ? "ys-ring ys-ring-pulse" : "ys-ring"} />
-        <div className="ys-center-name">YIELDSEEKER AGENT</div>
+        <div className="ys-center-name">YIELDPILOT AGENT</div>
         <div className="ys-center-amt">Autonomous yield agent</div>
         <div className="ys-center-hint">
           {loading ? "first scan in progress…" : "awaiting first scan result…"}

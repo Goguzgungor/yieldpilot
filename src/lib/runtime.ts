@@ -91,7 +91,7 @@ export function getRuntime(): Runtime {
     cfg = parseConfig(process.env);
   } catch (e) {
     throw new Error(
-      `YieldSeeker runtime init failed: invalid/missing environment. ${(e as Error).message}`,
+      `YieldPilot runtime init failed: invalid/missing environment. ${(e as Error).message}`,
     );
   }
 

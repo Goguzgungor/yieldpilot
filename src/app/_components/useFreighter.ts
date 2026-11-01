@@ -21,7 +21,7 @@ export interface FreighterState {
   error: string | null;
 }
 
-const DISCONNECT_KEY = "yieldseeker:wallet-disconnected";
+const DISCONNECT_KEY = "yieldpilot:wallet-disconnected";
 
 export function useFreighter() {
   const [state, setState] = useState<FreighterState>({

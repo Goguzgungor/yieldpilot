@@ -10,6 +10,11 @@ const nextConfig = {
     "@blend-capital/blend-sdk",
     "@anthropic-ai/sdk",
   ],
+  typescript: {
+    // Build-time typecheck skips scripts/ + tests/ (accepted baseline errors
+    // there); full-repo checking stays `npx tsc --noEmit` on tsconfig.json.
+    tsconfigPath: "tsconfig.next.json",
+  },
 };
 
 export default nextConfig;

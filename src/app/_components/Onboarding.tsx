@@ -74,7 +74,7 @@ export default function Onboarding({ ownerAddress, onboarding, open, onClose }: 
               <div>
                 <div className="ys-kicker">{registered ? "YOUR ACCOUNT" : "GET STARTED"}</div>
                 <h2 className="ys-panel-title">
-                  {registered ? "Agent active" : "Onboard to YieldSeeker"}
+                  {registered ? "Agent active" : "Onboard to YieldPilot"}
                 </h2>
                 <div className="ys-sub-id">
                   {ownerAddress ? truncateAddress(ownerAddress, 6, 6) : "connect a wallet"}

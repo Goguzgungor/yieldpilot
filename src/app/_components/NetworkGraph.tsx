@@ -412,7 +412,7 @@ export default function NetworkGraph({
               ctx.textBaseline = "top";
               ctx.font = "500 2.8px var(--font-plex-mono, monospace)";
               ctx.fillStyle = SCREEN_MUT;
-              ctx.fillText("YIELDSEEKER AGENT", x, y + 20);
+              ctx.fillText("YIELDPILOT AGENT", x, y + 20);
               ctx.font = "700 3.8px var(--font-plex-mono, monospace)";
               ctx.fillStyle = SCREEN_INK;
               ctx.fillText(n.label ?? "", x, y + 25);

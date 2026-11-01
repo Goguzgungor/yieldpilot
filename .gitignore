@@ -13,3 +13,7 @@ scripts/spike-artifacts/
 ys-*.png
 yieldseeker-final.png
 scripts/blend-utils
+.open-next
+.wrangler
+.dev.vars
+cloudflare-env.d.ts

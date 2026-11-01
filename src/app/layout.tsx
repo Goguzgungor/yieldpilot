@@ -17,7 +17,7 @@ const plexSans = IBM_Plex_Sans({
 });
 
 export const metadata = {
-  title: "YieldSeeker · Stellar",
+  title: "YieldPilot · Stellar",
   description: "Autonomous DeFi yield agent on Stellar — the Living Network.",
 };
 

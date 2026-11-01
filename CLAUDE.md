@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-**YieldSeeker** — an autonomous DeFi yield agent on Stellar (Next.js 16 App Router). One backend agent continuously scans Blend V2 (+ DeFindex) yield pools, scores them against a risk tolerance, asks an LLM to pick the best eligible pool, then supplies each registered user's idle USDC into it — executing **per-user** through OpenZeppelin smart accounts where the agent is a restricted, spending-capped policy signer (the "ARMA" model).
+**YieldPilot** (formerly YieldSeeker; live at yieldpilot.org) — an autonomous DeFi yield agent on Stellar (Next.js 16 App Router). One backend agent continuously scans Blend V2 (+ DeFindex) yield pools, scores them against a risk tolerance, asks an LLM to pick the best eligible pool, then supplies each registered user's idle USDC into it — executing **per-user** through OpenZeppelin smart accounts where the agent is a restricted, spending-capped policy signer (the "ARMA" model).
 
 ## Commands
 
@@ -90,6 +90,7 @@ The **faucet** (`/api/faucet`, `faucet.ts`) mints our testnet USDC SAC (admin = 
 
 ## Conventions & gotchas
 
+- **Rename residue is intentional:** the app was renamed YieldSeeker→YieldPilot, but the Mongo DB name (`mongo.ts` `DB_NAME = "yieldseeker"`) and the demo-owner seed literal (`agentKeys.ts` `"yieldseeker-demo-owner:v1|…"`) keep the old name on purpose — changing either orphans the live data / re-derives the owner key and bricks every deployed smart account.
 - **Money is always stroops** (`bigint`, 7 decimals). JSON can't carry BigInt — serialize at the API edge via `serialize.ts`; routes return amounts as decimal **strings**.
 - **Cross-instance state:** on Vercel the daily-cron tick and a user's `/api/register` may run in different function instances, so an in-process map is invisible to the loop. That's why scan snapshot / decision / discovery go through the DB KV and the registry is external. Don't reintroduce in-process-only shared state for anything the loop and routes both touch.
 - **Guard rails** (`PER_TX_CAP_USDC`, `DAILY_CAP_USDC`, `MIN_YIELD_DELTA_BPS`, `REBALANCE_COOLDOWN_SEC`) are enforced both in `orchestrator.ts` and on-chain by the spending-limit policy — keep both in mind.

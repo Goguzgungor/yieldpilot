@@ -1,0 +1,40 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "yieldpilot",
+  // Custom entrypoint wrapping .open-next/worker.js — adds the cron `scheduled`
+  // handler (see worker.ts). Build with `npm run deploy` / `npm run preview`.
+  "main": "worker.ts",
+  "compatibility_date": "2026-07-01",
+  "compatibility_flags": [
+    // Node.js APIs for mongodb / stellar-sdk / anthropic (also auto-populates
+    // process.env from vars+secrets, which config.ts parseConfig relies on).
+    "nodejs_compat",
+    "global_fetch_strictly_public"
+  ],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "services": [
+    {
+      "binding": "WORKER_SELF_REFERENCE",
+      "service": "yieldpilot"
+    }
+  ],
+  // NOTE: yieldpilot.org is served by VERCEL (see vercel.json for the cron) —
+  // the Workers free plan caps external subrequests at 50/invocation, which the
+  // agent tick (~74 RPC calls) can never fit. No `routes` here on purpose: a
+  // Worker deploy must not re-claim the domain.
+  "triggers": {
+    // Daily agent tick — only relevant if this Worker ever hosts the app again.
+    "crons": ["0 0 * * *"]
+  },
+  "vars": {
+    // No persistent process on Workers: the cron trigger drives ticks, the
+    // in-process loop must never start (instrumentation.ts escape hatch).
+    "AGENT_LOOP_ENABLED": "0"
+  },
+  "observability": {
+    "enabled": true
+  }
+}
