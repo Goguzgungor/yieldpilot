@@ -9,6 +9,7 @@ export interface RawReserve {
   totalSupplyUsdc: bigint;  // raw token units (7 decimals for USDC SAC)
   utilization: number;      // 0..1
   oracleStale: boolean;
+  poolStatus?: number;      // Blend pool status (see PoolYield.poolStatus)
 }
 
 export interface BlendReader {
@@ -44,6 +45,7 @@ export function createBlendSource(reader: BlendReader): YieldSource {
         tvlUsdc: r.totalSupplyUsdc,
         utilizationBps: Math.round(r.utilization * 10000),
         oracleHealthy: !r.oracleStale,
+        poolStatus: r.poolStatus,
       };
     },
   };
@@ -59,6 +61,7 @@ const ORACLE_STALE_THRESHOLD_SEC = 3600;
  *   - PoolV2.load(Network, poolId) where Network = { rpc: string, passphrase: string }
  *   - pool.reserves: Map<string, Reserve>  (keyed by assetId)
  *   - pool.metadata.name: string
+ *   - pool.metadata.status: number (0/1 active, 2/3 on ice, 4/5 frozen, 6 setup)
  *   - pool.loadOracle(): Promise<PoolOracle>
  *   - reserve.supplyApr: number (fraction, direct field)
  *   - reserve.totalSupply(): bigint (method)
@@ -133,6 +136,7 @@ export function createBlendReader(
         totalSupplyUsdc: usdcReserve.totalSupply(),   // confirmed method returning bigint
         utilization: usdcReserve.getUtilizationFloat(), // confirmed method returning number 0..1
         oracleStale,
+        poolStatus: pool.metadata.status,
       };
     },
   };

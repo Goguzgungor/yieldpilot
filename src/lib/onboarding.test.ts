@@ -10,6 +10,8 @@ import {
   opFromXdr,
   EXEC_USDC_CONTRACT_ID,
   EXEC_POOL_ID,
+  SPENDING_POLICY_ID,
+  VIGIL_GUARD_ID,
   ED25519_VERIFIER_ID,
   STROOPS_PER_USDC,
 } from "./onboarding";
@@ -88,6 +90,21 @@ describe("buildDeployOp", () => {
   });
 });
 
+describe("buildDeployOp ownership", () => {
+  it("defaults the Default-rule owner to Delegated(deployer) — the user owns the wallet", () => {
+    const deployer = Keypair.random().publicKey();
+    const { opXdr } = buildDeployOp({ deployer, saltHex: "cd".repeat(32) });
+    const owner = (opFromXdr(opXdr).body().value() as xdr.InvokeHostFunctionOp)
+      .hostFunction()
+      .createContractV2()
+      .constructorArgs()[0]
+      .vec()![0]
+      .vec()!;
+    expect(owner[0].sym().toString()).toBe("Delegated");
+    expect(Address.fromScAddress(owner[1].address()).toString()).toBe(deployer);
+  });
+});
+
 describe("buildAgentRuleOpsXdr", () => {
   it("emits two add_context_rule ops scoped to POOL and USDC", () => {
     const smartWallet = StrKey.encodeContract(Buffer.alloc(32, 9));
@@ -107,9 +124,10 @@ describe("buildAgentRuleOpsXdr", () => {
 
     const usdc = decodeInvoke(opFromXdr(usdcRuleOpXdr));
     expect(Address.fromScAddress(usdc.args[0].vec()![1].address()).toString()).toBe(EXEC_USDC_CONTRACT_ID);
-    // usdc rule carries a non-empty policies map (the cap); pool rule does not.
-    expect(usdc.args[4].map()!.length).toBe(1);
-    expect(pool.args[4].map()!.length).toBe(0);
+    // Both rules carry the Vigil guard; the USDC rule also carries the cap.
+    const policyIds = (v: xdr.ScVal) => v.map()!.map((e) => Address.fromScAddress(e.key().address()).toString());
+    expect(policyIds(pool.args[4])).toEqual([VIGIL_GUARD_ID]);
+    expect(policyIds(usdc.args[4]).sort()).toEqual([SPENDING_POLICY_ID, VIGIL_GUARD_ID].sort());
   });
 });
 

@@ -52,4 +52,13 @@ describe("createBlendSource", () => {
     });
     expect(await src.readPool("C_B")).toMatchObject({ protocol: "blend", poolId: "C_B", apyBps: 940, oracleHealthy: false });
   });
+
+  it("carries the Blend pool status through to the PoolYield", async () => {
+    const frozenReader: BlendReader = {
+      async readReserve(poolId) {
+        return { poolId, name: "Etherfuse", supplyApr: 0.01, totalSupplyUsdc: 15_000_0000000n, utilization: 0.1, oracleStale: false, poolStatus: 4 };
+      },
+    };
+    expect(await createBlendSource(frozenReader).readPool("C_E")).toMatchObject({ poolStatus: 4 });
+  });
 });

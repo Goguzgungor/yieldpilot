@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { createDefindexSource, type StrategyTvlReader } from "./defindex";
+import { createDefindexSource, toUsdcStroops, type StrategyTvlReader } from "./defindex";
 import type { BlendReader, RawReserve } from "./scanner";
 import type { DefindexStrategyConfig } from "./config";
 
@@ -65,5 +65,29 @@ describe("createDefindexSource", () => {
   it("returns null for an unknown strategy id", async () => {
     const src = createDefindexSource(readerFor, strategies);
     expect(await src.readPool("C_UNKNOWN")).toBeNull();
+  });
+
+  it("inherits the underlying Blend pool status", async () => {
+    const onIceFor = (): BlendReader => ({
+      async readReserve(poolId) {
+        return { poolId, name: "Blend Fixed", supplyApr: 0.05, totalSupplyUsdc: 1n, utilization: 0.5, oracleStale: false, poolStatus: 3 };
+      },
+    });
+    expect(await createDefindexSource(onIceFor, strategies).readPool("C_STRAT_USDC")).toMatchObject({ poolStatus: 3 });
+  });
+});
+
+describe("toUsdcStroops", () => {
+  it("passes 7-decimal USDC through at price 1", () => {
+    expect(toUsdcStroops(187_810_278_070_411n, 7, 1)).toBe(187_810_278_070_411n);
+  });
+  it("prices non-USDC assets with the oracle price", () => {
+    // 42,149.2258669 XLM at $0.168342 ≈ $7,095.48
+    expect(toUsdcStroops(421_492_258_669n, 7, 0.168342)).toBe(70_954_849_809n);
+  });
+  it("rescales other decimals and rejects unusable inputs", () => {
+    expect(toUsdcStroops(5_000_000n, 6, 1)).toBe(50_000_000n);
+    expect(toUsdcStroops(0n, 7, 1)).toBe(0n);
+    expect(toUsdcStroops(10n, 7, Number.NaN)).toBe(0n);
   });
 });

@@ -13,7 +13,7 @@ import { parseConfig, type Config } from "./config";
 import { createDb, type Db } from "./db";
 import * as registry from "./registry";
 import { createBlendReader, createBlendSource, scanSource, type BlendReader } from "./scanner";
-import { createDefindexSource } from "./defindex";
+import { createBlendPositionTvlReader, createDefindexSource } from "./defindex";
 import { createBlendOnchainPoolSource, createPoolDiscovery, type PoolDiscovery } from "./discovery";
 import { createSorobanClient, createExecutor, type Executor } from "./executor";
 import { createKeypairWallet, createPolicySignerWallet } from "./wallet";
@@ -28,6 +28,7 @@ import {
   type SerializedScoredPool,
 } from "./serialize";
 import type { Position, ScoredPool, Decision, YieldSource } from "./types";
+import { computeLiveRatings, type RatingsJson } from "./vigil/service";
 
 /** Latest agent decision exposed to the UI (chosen pool + rationale + action). */
 export interface LatestDecision {
@@ -111,8 +112,17 @@ export function getRuntime(): Runtime {
     }
     return r;
   };
+  // TVL is read live from each strategy's position in its Blend pool; the
+  // configured fallbackTvlUsdc is only used if that read fails.
   const defindexSource = cfg.scanDefindexStrategies.length
-    ? createDefindexSource(readerFor, cfg.scanDefindexStrategies)
+    ? createDefindexSource(
+        readerFor,
+        cfg.scanDefindexStrategies,
+        createBlendPositionTvlReader(
+          { rpc: cfg.scanRpcUrl, passphrase: cfg.scanNetworkPassphrase },
+          cfg.scanDefindexStrategies,
+        ),
+      )
     : null;
 
   // Dynamic on-chain pool discovery (Blend backstop reward zone + factory deploy
@@ -616,4 +626,69 @@ export async function getDecision(): Promise<LatestDecision> {
     }
   }
   return rt.lastDecision ?? { action: "hold", chosenPoolId: null, rationale: "" };
+}
+
+// ── Vigil ratings ──────────────────────────────────────────────────────────
+
+/** Ratings older than this are recomputed on the next read. */
+const RATINGS_TTL_MS = 60 * 60 * 1000;
+let ratingsInFlight: Promise<RatingsJson> | null = null;
+
+export interface CachedRatings {
+  data: RatingsJson;
+  /** epoch ms when the ratings were computed and cached. */
+  cachedAt: number;
+  stale: boolean;
+}
+
+/**
+ * Vigil ratings for every Blend V2 pool + configured DeFindex strategy, from a
+ * live mainnet read. A full run takes ~90 s, so the result lives in the DB KV
+ * (shared across serverless instances) for {@link RATINGS_TTL_MS}; concurrent
+ * misses in one instance share a single run. `refresh` forces a recompute.
+ * If a recompute fails and an older copy exists, that copy is returned with
+ * `stale: true` instead of an error.
+ */
+export async function getRatings(opts: { refresh?: boolean } = {}): Promise<CachedRatings> {
+  const rt = getRuntime();
+  const [raw, atRaw] = await Promise.all([rt.db.getKV("vigilRatings"), rt.db.getKV("vigilRatingsAt")]);
+  const cachedAt = atRaw ? Number(atRaw) || 0 : 0;
+  let cached: RatingsJson | null = null;
+  if (raw) {
+    try {
+      cached = JSON.parse(raw) as RatingsJson;
+    } catch {
+      cached = null;
+    }
+  }
+  if (cached && !opts.refresh && Date.now() - cachedAt < RATINGS_TTL_MS) {
+    return { data: cached, cachedAt, stale: false };
+  }
+
+  ratingsInFlight ??= computeLiveRatings({
+    rpcUrl: rt.cfg.scanRpcUrl,
+    passphrase: rt.cfg.scanNetworkPassphrase,
+    factoryId: rt.cfg.scanPoolFactoryId,
+    backstopId: rt.cfg.scanBackstopId,
+    curatedPoolIds: rt.cfg.scanBlendPoolIds,
+    defindexStrategies: rt.cfg.scanDefindexStrategies.map((s) => ({
+      strategyId: s.strategyId,
+      name: s.name,
+      asset: s.asset,
+      assetContractId: s.assetContractId,
+      blendPoolId: s.blendPoolId,
+    })),
+  }).finally(() => {
+    ratingsInFlight = null;
+  });
+  try {
+    const data = await ratingsInFlight;
+    const now = Date.now();
+    await rt.db.setKV("vigilRatings", JSON.stringify(data));
+    await rt.db.setKV("vigilRatingsAt", String(now));
+    return { data, cachedAt: now, stale: false };
+  } catch (e) {
+    if (cached) return { data: cached, cachedAt, stale: true };
+    throw e;
+  }
 }

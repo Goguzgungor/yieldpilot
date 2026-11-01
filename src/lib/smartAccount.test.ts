@@ -19,6 +19,11 @@ import {
   addAgentRuleOps,
   deploySmartWalletOp,
   buildAgentAuth,
+  delegatedSignerScVal,
+  writeDelegatedAuthPayload,
+  delegatedOwnerAuthEntries,
+  riskGateParams,
+  addPolicyOp,
   SMART_ACCOUNT_WASM_HASH,
   type ExternalSignerKey,
 } from "./smartAccount";
@@ -164,6 +169,142 @@ describe("deploySmartWalletOp", () => {
     const b = deploySmartWalletOp({ deployer, networkPassphrase: PASS, verifier: VERIFIER, ownerPublicKeyHex: ownerHex });
     expect(a.saltHex).not.toBe(b.saltHex);
     expect(a.contractId).not.toBe(b.contractId);
+  });
+});
+
+describe("Delegated (G-account) owner", () => {
+  const owner = Keypair.fromRawEd25519Seed(Buffer.alloc(32, 8)).publicKey();
+
+  it("delegatedSignerScVal encodes Signer::Delegated(address)", () => {
+    const vec = delegatedSignerScVal(owner).vec()!;
+    expect(vec[0].sym().toString()).toBe("Delegated");
+    expect(Address.fromScAddress(vec[1].address()).toString()).toBe(owner);
+  });
+
+  it("deploySmartWalletOp can make a G-account the Default-rule owner", () => {
+    const { op } = deploySmartWalletOp({ deployer: owner, networkPassphrase: PASS, ownerAddress: owner });
+    const args = (op.body().value() as xdr.InvokeHostFunctionOp)
+      .hostFunction()
+      .createContractV2()
+      .constructorArgs();
+    const signers = args[0].vec()!;
+    expect(signers).toHaveLength(1);
+    expect(signers[0].toXDR("hex")).toBe(delegatedSignerScVal(owner).toXDR("hex"));
+    expect(args[1].map()).toEqual([]);
+  });
+
+  it("writeDelegatedAuthPayload maps Delegated(owner) to empty signature bytes", () => {
+    const payload = writeDelegatedAuthPayload([0], owner).map()!;
+    const ids = payload.find((e) => e.key().sym().toString() === "context_rule_ids")!.val().vec()!;
+    expect(ids.map((v) => v.u32())).toEqual([0]);
+    const signers = payload.find((e) => e.key().sym().toString() === "signers")!.val().map()!;
+    expect(signers).toHaveLength(1);
+    expect(signers[0].key().toXDR("hex")).toBe(delegatedSignerScVal(owner).toXDR("hex"));
+    expect(signers[0].val().bytes()).toHaveLength(0);
+  });
+
+  it("delegatedOwnerAuthEntries signs the SA entry and adds the nested __check_auth(authDigest) entry", () => {
+    const sa = makeSaAuthEntry(SMART_WALLET, SMART_WALLET);
+    const other = makeSaAuthEntry(USDC, USDC);
+    const out = delegatedOwnerAuthEntries({
+      entries: [sa, other],
+      smartAccount: SMART_WALLET,
+      owner,
+      networkPassphrase: PASS,
+      expirationLedger: 5000,
+      contextRuleIds: [0],
+    });
+    expect(out).toHaveLength(3);
+
+    // SA entry: expiration set + AuthPayload{[0], {Delegated(owner): b""}}
+    const saCreds = out[0].credentials().address();
+    expect(saCreds.signatureExpirationLedger()).toBe(5000);
+    expect(saCreds.signature().toXDR("hex")).toBe(writeDelegatedAuthPayload([0], owner).toXDR("hex"));
+    // unrelated entries are left untouched
+    expect(out[1].toXDR("hex")).toBe(other.toXDR("hex"));
+
+    // nested entry: source-account credentials (covered by the owner's envelope
+    // signature) authorizing SA.__check_auth(sha256(payload || [0]))
+    const nested = out[2];
+    expect(nested.credentials().switch().name).toBe("sorobanCredentialsSourceAccount");
+    const call = nested.rootInvocation().function().contractFn();
+    expect(Address.fromScAddress(call.contractAddress()).toString()).toBe(SMART_WALLET);
+    expect(call.functionName().toString()).toBe("__check_auth");
+    const digest = buildAuthDigest(buildSignaturePayload(PASS, out[0], 5000), [0]);
+    expect(call.args()[0].bytes().toString("hex")).toBe(digest.toString("hex"));
+  });
+
+  it("delegatedOwnerAuthEntries throws when the simulation produced no SA entry", () => {
+    expect(() =>
+      delegatedOwnerAuthEntries({
+        entries: [makeSaAuthEntry(USDC, USDC)],
+        smartAccount: SMART_WALLET,
+        owner,
+        networkPassphrase: PASS,
+        expirationLedger: 5000,
+        contextRuleIds: [0],
+      }),
+    ).toThrow(/no smart-account auth entry/);
+  });
+});
+
+describe("Vigil RiskGate policy wiring", () => {
+  const GUARD = StrKey.encodeContract(Buffer.alloc(32, 6));
+  const REGISTRY = StrKey.encodeContract(Buffer.alloc(32, 7));
+
+  it("riskGateParams encodes the sorted RiskGateParams map (Option<Address> as void)", () => {
+    const pool = riskGateParams({ registry: REGISTRY, minScore: 60, maxAgeSecs: 3600n, allowedRecipients: [] });
+    expect(pool.map()!.map((e) => e.key().sym().toString())).toEqual([
+      "allowed_recipients",
+      "max_age_secs",
+      "min_score",
+      "registry",
+    ]);
+    expect(scValToNative(pool)).toEqual({ allowed_recipients: [], max_age_secs: 3600n, min_score: 60, registry: REGISTRY });
+    const usdc = riskGateParams({ registry: null, minScore: 0, maxAgeSecs: 0n, allowedRecipients: [POOL] });
+    expect(usdc.map()![3].val().switch().name).toBe("scvVoid");
+    expect(scValToNative(usdc).allowed_recipients).toEqual([POOL]);
+  });
+
+  it("addAgentRuleOps attaches the guard to both rules (pool: rating gate, USDC: pool-only recipient)", () => {
+    const { poolRuleOp, usdcRuleOp } = addAgentRuleOps({
+      smartWallet: SMART_WALLET,
+      poolId: POOL,
+      usdcSac: USDC,
+      verifier: VERIFIER,
+      agentPublicKeyHex: agentHex,
+      spendingPolicy: POLICY,
+      capStroops: 100n,
+      periodLedgers: 10,
+      guard: { id: GUARD, registry: REGISTRY, minScore: 60, maxAgeSecs: 7200n },
+    });
+    const poolPolicies = decodeInvoke(poolRuleOp).args[4].map()!;
+    expect(poolPolicies.map((e) => Address.fromScAddress(e.key().address()).toString())).toEqual([GUARD]);
+    expect(scValToNative(poolPolicies[0].val())).toMatchObject({ registry: REGISTRY, min_score: 60, max_age_secs: 7200n });
+
+    const usdcPolicies = decodeInvoke(usdcRuleOp).args[4].map()!;
+    const keys = usdcPolicies.map((e) => e.key().toXDR("hex"));
+    expect(keys).toEqual([...keys].sort()); // Soroban requires sorted map keys
+    const guardEntry = usdcPolicies.find((e) => Address.fromScAddress(e.key().address()).toString() === GUARD)!;
+    expect(scValToNative(guardEntry.val())).toMatchObject({ allowed_recipients: [POOL], registry: null, min_score: 0 });
+    expect(usdcPolicies).toHaveLength(2); // spending limit + guard
+  });
+
+  it("addAgentRuleOps without a guard keeps the legacy shape", () => {
+    const { poolRuleOp } = addAgentRuleOps({
+      smartWallet: SMART_WALLET, poolId: POOL, usdcSac: USDC, verifier: VERIFIER,
+      agentPublicKeyHex: agentHex, spendingPolicy: POLICY, capStroops: 100n, periodLedgers: 10,
+    });
+    expect(decodeInvoke(poolRuleOp).args[4].map()).toEqual([]);
+  });
+
+  it("addPolicyOp builds add_policy(rule_id, policy, install_param) on the smart account", () => {
+    const param = riskGateParams({ registry: null, minScore: 0, maxAgeSecs: 0n, allowedRecipients: [POOL] });
+    const inv = decodeInvoke(addPolicyOp({ smartWallet: SMART_WALLET, contextRuleId: 2, policy: GUARD, installParam: param }));
+    expect(inv.fn).toBe("add_policy");
+    expect(inv.args[0].u32()).toBe(2);
+    expect(Address.fromScAddress(inv.args[1].address()).toString()).toBe(GUARD);
+    expect(inv.args[2].toXDR("hex")).toBe(param.toXDR("hex"));
   });
 });
 

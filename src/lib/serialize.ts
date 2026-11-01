@@ -29,6 +29,7 @@ export interface SerializedScoredPool {
   tvlUsdc: string;
   utilizationBps: number;
   oracleHealthy: boolean;
+  poolStatus?: number;
   riskScore: number;
   eligible: boolean;
   reason?: string;

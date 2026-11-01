@@ -9,6 +9,12 @@ export interface PoolYield {
   tvlUsdc: bigint;         // USDC TVL in stroops (7 decimals)
   utilizationBps: number;  // 0..10000
   oracleHealthy: boolean;  // false => flagged risky
+  /**
+   * Blend pool status, when known: 0 Admin_Active, 1 Active, 2 Admin_On_Ice,
+   * 3 On_Ice (borrowing disabled), 4 Admin_Frozen, 5 Frozen (deposits
+   * disabled), 6 Setup. Anything >= 2 means the pool is in a risk state.
+   */
+  poolStatus?: number;
 }
 
 /** One protocol's adapter: reads a pool/strategy id into a normalized PoolYield. */

@@ -12,16 +12,19 @@
  * `/api/agent` also returns the agent + demo-owner public keys at runtime, so a
  * deployment that overrides these via env still drives the UI correctly.
  *
- * Freighter signing reality (see the onboarding flow + report):
- *   - Steps 1 (deploy), 3 (fund) and 4 (register) are normal account-signed
- *     transactions → fully Freighter-native via `signTransaction`.
- *   - Step 2 (`add_context_rule`) needs the OZ SmartAccount OWNER's custom
- *     AuthPayload signature over `sha256(signaturePayload || scvVec([ruleIds]))`
- *     (see {@link ./smartAccount} buildAuthDigest). Freighter's `signAuthEntry`
- *     only signs the STANDARD Soroban auth preimage (no rule-id tail), so it
- *     cannot produce this signature. Step 2 is therefore performed backend-side
- *     by a deterministic demo owner (see `/api/authorize`), and the wallet is
- *     deployed with that demo owner as its Default-rule signer.
+ * Ownership: the wallet is deployed with the user's own G-account as its
+ * Default-rule owner (`Signer::Delegated(G)`), so the user — not the backend —
+ * controls rule management, upgrades and withdrawals. Every step is a normal
+ * Freighter `signTransaction`:
+ *   - Step 1 (deploy) and 3 (fund) are account-signed transactions.
+ *   - Step 2 (`add_context_rule` ×2) is owner-authorized through the Delegated
+ *     signer: the server builds the SA auth entry plus the nested
+ *     `__check_auth` authorization as a source-account entry, which the
+ *     user's envelope signature covers (see smartAccount.ts
+ *     `delegatedOwnerAuthEntries`, proven by scripts/spike-delegated-owner.ts).
+ *
+ * Accounts onboarded before this change are owned by a backend demo-owner key
+ * (agentKeys.ts); scripts/migrate-legacy-accounts.ts hands them over.
  */
 import { Address, Contract, StrKey, nativeToScVal, xdr } from "@stellar/stellar-sdk";
 import { deploySmartWalletOp, addAgentRuleOps } from "./smartAccount";
@@ -38,6 +41,8 @@ export const EXEC_USDC_CONTRACT_ID = "CD2R7WREEPGIAXZL4ASB76Y6PWTY6ZZXZ6C64AIKFD
 export const ED25519_VERIFIER_ID = "CBHJOANTAHF2ZKU5HZRZTWP4GX7YCSNR3V3AIMAH5P5R7S465SK24RSO";
 /** Spending-limit policy contract id (caps the agent's USDC rule). */
 export const SPENDING_POLICY_ID = "CBLNG63CIFKLFY6ZTL32NWMGPN7NBDSXZUSCQNTLMYRTLIZYA7MG3KAP";
+/** Vigil RiskGate policy contract id (contracts/vigil-guard, testnet). */
+export const VIGIL_GUARD_ID = "CD6BDS7R5K3IUCQSJUZUWAGLTR47EZOYEVCO5MPT7YGNBNQRHSNY5VMS";
 /** Exec network passphrase (testnet). */
 export const EXEC_NETWORK_PASSPHRASE = "Test SDF Network ; September 2015";
 
@@ -94,21 +99,25 @@ export function stroopsToUsdcStr(stroops: bigint): string {
 /**
  * STEP 1 — the `createCustomContract` op + deterministic contract id for a new
  * per-user smart wallet. `deployer` is the user's `G…` (signs the envelope via
- * Freighter + pays the fee). `ownerPublicKeyHex` is the Default-rule owner
- * signer's 32-byte raw ed25519 hex.
+ * Freighter + pays the fee). The Default-rule owner is `Delegated(ownerAddress)`
+ * (defaults to the deployer), or — legacy only — an External ed25519 key given
+ * as `ownerPublicKeyHex`.
  *
  * Returns base64 op XDR so it can cross the API/client boundary as a string.
  */
 export function buildDeployOp(opts: {
   deployer: string;
-  ownerPublicKeyHex: string;
+  ownerAddress?: string;
+  ownerPublicKeyHex?: string;
   saltHex?: string;
 }): { opXdr: string; contractId: string; saltHex: string } {
+  const owner = opts.ownerPublicKeyHex
+    ? { verifier: ED25519_VERIFIER_ID, ownerPublicKeyHex: opts.ownerPublicKeyHex }
+    : { ownerAddress: opts.ownerAddress ?? opts.deployer };
   const { op, contractId, saltHex } = deploySmartWalletOp({
     deployer: opts.deployer,
     networkPassphrase: EXEC_NETWORK_PASSPHRASE,
-    verifier: ED25519_VERIFIER_ID,
-    ownerPublicKeyHex: opts.ownerPublicKeyHex,
+    ...owner,
     saltHex: opts.saltHex,
   });
   return { opXdr: op.toXDR("base64"), contractId, saltHex };
@@ -116,8 +125,8 @@ export function buildDeployOp(opts: {
 
 /**
  * STEP 2 — the two `add_context_rule` ops (pool rule + capped USDC rule) that
- * authorize the agent on `smartWallet`. Returned as base64 op XDR strings; the
- * backend authorize endpoint owner-signs + submits them (see `/api/authorize`).
+ * authorize the agent on `smartWallet`. Returned as base64 op XDR strings;
+ * `/api/onboard/prepare` wraps each into an owner-authorized tx the user signs.
  */
 export function buildAgentRuleOpsXdr(opts: {
   smartWallet: string;
@@ -133,6 +142,7 @@ export function buildAgentRuleOpsXdr(opts: {
     spendingPolicy: SPENDING_POLICY_ID,
     capStroops: opts.capStroops ?? DEFAULT_CAP_STROOPS,
     periodLedgers: PERIOD_LEDGERS,
+    guard: { id: VIGIL_GUARD_ID, minScore: 0, maxAgeSecs: 0n },
   });
   return {
     poolRuleOpXdr: poolRuleOp.toXDR("base64"),

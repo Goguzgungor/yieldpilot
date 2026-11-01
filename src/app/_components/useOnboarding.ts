@@ -5,8 +5,8 @@ import { useCallback, useEffect, useState } from "react";
 // NOTE: this hook is intentionally free of any `@stellar/stellar-sdk` import so
 // the browser bundle never pulls in the SDK (it relies on Node built-ins). All
 // transaction building / simulation / submission happens server-side
-// (`/api/onboard/*`, `/api/authorize`); the client only runs Freighter's
-// `signTransaction` on a server-prepared XDR and POSTs the signed XDR back.
+// (`/api/onboard/*`); the client only runs Freighter's `signTransaction` on a
+// server-prepared XDR and POSTs the signed XDR back.
 
 const EXEC_NETWORK_PASSPHRASE = "Test SDF Network ; September 2015";
 
@@ -24,13 +24,13 @@ export interface RegisteredUser {
 interface AgentInfo {
   agentPublicKey: string;
   agentPublicKeyHex: string;
-  ownerPublicKey: string;
-  ownerPublicKeyHex: string;
   freighterCanSignOwnerAuth: boolean;
   ownerMode: string;
 }
 
 export type StepKey = "deploy" | "authorize" | "fund" | "register";
+/** Who owns the smart account (see src/lib/ownership.ts). */
+export type OwnershipMode = "user" | "co-owned" | "backend" | "unknown";
 export type StepStatus = "idle" | "active" | "done" | "error";
 
 export interface OnboardingStep {
@@ -116,19 +116,23 @@ async function faucetMint(opts: {
  * Server-prepare an onboarding tx, sign it in Freighter, submit it server-side.
  * Returns the on-chain tx hash. Throws with a readable message on any failure.
  *
- * Used for the `deploy` step (createCustomContract, user-signed). Funding is no
- * longer Freighter-driven — the Fund step self-serve-mints via `/api/faucet`.
+ * Used for the `deploy` step (createCustomContract) and the two `authorize-*`
+ * steps (owner-authorized add_context_rule — the user is the wallet's owner).
+ * Funding is not Freighter-driven — the Fund step self-serve-mints via
+ * `/api/faucet`.
  */
 async function prepareSignSubmit(opts: {
   owner: string;
-  step: "deploy";
+  step: "deploy" | "authorize-pool" | "authorize-usdc" | "finalize-ownership";
+  smartWallet?: string;
   label: string;
-}): Promise<{ hash: string; contractId?: string }> {
+}): Promise<{ hash: string; contractId?: string; contextRuleId?: number }> {
   const prep = await postJson<{ xdr: string; contractId?: string; error?: string }>(
     "/api/onboard/prepare",
     {
       owner: opts.owner,
       step: opts.step,
+      smartWallet: opts.smartWallet,
     },
   );
   if (!prep.ok || !prep.data?.xdr) {
@@ -144,14 +148,17 @@ async function prepareSignSubmit(opts: {
     throw new Error(`${opts.label}: Freighter signing failed (${signRes.error ?? "no signature"})`);
   }
 
-  const sub = await postJson<{ hash: string; success: boolean; status: string; error?: string }>(
-    "/api/onboard/submit",
-    { signedXdr: signRes.signedTxXdr, label: opts.label },
-  );
+  const sub = await postJson<{
+    hash: string;
+    success: boolean;
+    status: string;
+    contextRuleId?: number;
+    error?: string;
+  }>("/api/onboard/submit", { signedXdr: signRes.signedTxXdr, label: opts.label });
   if (!sub.ok || !sub.data?.success) {
     throw new Error(`${opts.label}: ${sub.data?.status ?? `HTTP ${sub.status}`}${sub.data?.error ? ` (${sub.data.error})` : ""}`);
   }
-  return { hash: sub.data.hash, contractId: prep.data.contractId };
+  return { hash: sub.data.hash, contractId: prep.data.contractId, contextRuleId: sub.data.contextRuleId };
 }
 
 // ── hook ─────────────────────────────────────────────────────────────────────
@@ -173,6 +180,15 @@ export interface OnboardingState {
   saUsdcStroops: string | null;
   /** True while a demo reset (un-register) request is in flight. */
   resetting: boolean;
+  /** Ownership of the registered smart account; null until known. */
+  ownership: OwnershipMode | null;
+  /** True while the finalize-ownership signature/submit is in flight. */
+  finalizing: boolean;
+  /**
+   * Legacy wallets only ("co-owned"): remove the backend demo owner so the
+   * user's Freighter account is the sole owner. One Freighter signature.
+   */
+  finalizeOwnership: () => Promise<void>;
   /** Kick off the full deploy → authorize → fund → register flow. */
   start: (amountUsdc: number) => Promise<void>;
   /** Re-pull the owner's registration status. */
@@ -192,9 +208,9 @@ export interface OnboardingState {
  *   - Looks up `/api/users?owner=…` → registered row | not-registered.
  *   - `start(amount)` runs the 4 steps and flips `registered` on success.
  *
- * Steps 1 (deploy) / 3 (fund) / 4 (register) are Freighter-native. Step 2
- * (authorize) is backend-assisted (`/api/authorize`) because Freighter cannot
- * produce the OZ SmartAccount owner AuthPayload signature.
+ * The user's G-account owns the smart account (`Signer::Delegated(G)`), so
+ * steps 1 (deploy) and 2 (authorize ×2) are Freighter signatures; step 3
+ * mints test USDC via the faucet and step 4 records the registration.
  */
 export function useOnboarding(ownerAddress: string | null): OnboardingState {
   const [registered, setRegistered] = useState<RegisteredUser | null | false>(null);
@@ -206,6 +222,8 @@ export function useOnboarding(ownerAddress: string | null): OnboardingState {
   const [agent, setAgent] = useState<AgentInfo | null>(null);
   const [saUsdcStroops, setSaUsdcStroops] = useState<string | null>(null);
   const [resetting, setResetting] = useState(false);
+  const [ownership, setOwnership] = useState<OwnershipMode | null>(null);
+  const [finalizing, setFinalizing] = useState(false);
 
   const setStep = useCallback((key: StepKey, patch: Partial<OnboardingStep>) => {
     setSteps((prev) => prev.map((s) => (s.key === key ? { ...s, ...patch } : s)));
@@ -238,6 +256,39 @@ export function useOnboarding(ownerAddress: string | null): OnboardingState {
     }
     void fetchStatus(ownerAddress);
   }, [ownerAddress, fetchStatus]);
+
+  // Ownership lookup for a registered wallet (legacy wallets may still be
+  // backend- or co-owned).
+  const registeredWallet = registered ? registered.smartWallet : null;
+  const fetchOwnership = useCallback(async (owner: string, wallet: string) => {
+    const res = await getJson<{ mode: OwnershipMode }>(
+      `/api/onboard/ownership?smartWallet=${encodeURIComponent(wallet)}&owner=${encodeURIComponent(owner)}`,
+    );
+    setOwnership(res.data?.mode ?? "unknown");
+  }, []);
+  useEffect(() => {
+    setOwnership(null);
+    if (ownerAddress && registeredWallet) void fetchOwnership(ownerAddress, registeredWallet);
+  }, [ownerAddress, registeredWallet, fetchOwnership]);
+
+  const finalizeOwnership = useCallback(async () => {
+    if (!ownerAddress || !registeredWallet || finalizing) return;
+    setFinalizing(true);
+    setError(null);
+    try {
+      await prepareSignSubmit({
+        owner: ownerAddress,
+        step: "finalize-ownership",
+        smartWallet: registeredWallet,
+        label: "finalize ownership",
+      });
+      await fetchOwnership(ownerAddress, registeredWallet);
+    } catch (e) {
+      setError((e as Error).message || "finalize ownership failed");
+    } finally {
+      setFinalizing(false);
+    }
+  }, [ownerAddress, registeredWallet, finalizing, fetchOwnership]);
 
   const refresh = useCallback(() => {
     if (ownerAddress) void fetchStatus(ownerAddress);
@@ -277,14 +328,14 @@ export function useOnboarding(ownerAddress: string | null): OnboardingState {
       setSaUsdcStroops(null);
 
       try {
-        // Load the agent + demo-owner keys (informational + drives the panel).
+        // Load the agent key (informational + drives the panel).
         const agentRes = await getJson<AgentInfo>("/api/agent");
         if (!agentRes.ok || !agentRes.data) {
           throw new Error("could not load /api/agent (agent key unavailable)");
         }
         setAgent(agentRes.data);
 
-        // ── STEP 1: deploy the smart account (owner = backend demo owner) ──
+        // ── STEP 1: deploy the smart account (owner = the user's own G-account) ──
         setStep("deploy", { status: "active", detail: "building createCustomContract…" });
         const deploy = await prepareSignSubmit({ owner: ownerAddress, step: "deploy", label: "deploy" });
         const contractId = deploy.contractId;
@@ -292,22 +343,30 @@ export function useOnboarding(ownerAddress: string | null): OnboardingState {
         setSmartWallet(contractId);
         setStep("deploy", { status: "done", detail: contractId, txHash: deploy.hash });
 
-        // ── STEP 2: authorize the agent (backend-assisted owner signing) ──
-        setStep("authorize", { status: "active", detail: "owner-signing add_context_rule ×2 (backend)…" });
-        const authRes = await postJson<{
-          poolRuleId: number;
-          usdcRuleId: number;
-          hashes: string[];
-          error?: string;
-        }>("/api/authorize", { smartWallet: contractId, owner: ownerAddress });
-        if (!authRes.ok || !authRes.data || authRes.data.error) {
-          throw new Error(`authorize failed: ${authRes.data?.error ?? `HTTP ${authRes.status}`}`);
+        // ── STEP 2: authorize the agent — the user, as owner, signs both rules ──
+        setStep("authorize", { status: "active", detail: "sign the agent's pool rule in Freighter (1/2)…" });
+        const poolRule = await prepareSignSubmit({
+          owner: ownerAddress,
+          step: "authorize-pool",
+          smartWallet: contractId,
+          label: "authorize pool rule",
+        });
+        setStep("authorize", { status: "active", detail: "sign the agent's capped USDC rule in Freighter (2/2)…" });
+        const usdcRule = await prepareSignSubmit({
+          owner: ownerAddress,
+          step: "authorize-usdc",
+          smartWallet: contractId,
+          label: "authorize usdc rule",
+        });
+        const poolRuleId = poolRule.contextRuleId;
+        const usdcRuleId = usdcRule.contextRuleId;
+        if (poolRuleId === undefined || usdcRuleId === undefined) {
+          throw new Error("authorize: the chain did not return the new rule ids");
         }
-        const { poolRuleId, usdcRuleId, hashes } = authRes.data;
         setStep("authorize", {
           status: "done",
           detail: `pool rule #${poolRuleId} · usdc rule #${usdcRuleId} (capped)`,
-          txHash: hashes[hashes.length - 1],
+          txHash: usdcRule.hash,
         });
 
         // ── STEP 3: fund the smart account by minting our test USDC into it ──
@@ -363,6 +422,9 @@ export function useOnboarding(ownerAddress: string | null): OnboardingState {
     agent,
     saUsdcStroops,
     resetting,
+    ownership,
+    finalizing,
+    finalizeOwnership,
     start,
     refresh,
     reset,

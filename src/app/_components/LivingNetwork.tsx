@@ -119,6 +119,9 @@ export default function LivingNetwork() {
             <span>· Stellar</span>
             <span className="ys-tagline">· autonomous agent</span>
           </div>
+          <a href="/ratings" className="ys-top-link">
+            Pool risk ratings
+          </a>
           <span className="ys-live-chip">
             <span className={paused ? "ys-live-dot" : "ys-live-dot ys-live-on"} />
             {paused ? "PAUSED" : "LIVE"}

@@ -9,6 +9,14 @@ const MAX_RISK: Record<RiskTolerance, number> = {
   conservative: 35, balanced: 65, aggressive: 100,
 };
 
+/** Why a Blend pool in a non-active status must not receive new deposits. */
+function poolStatusReason(status: number | undefined): string | undefined {
+  if (status === undefined || status <= 1) return undefined;
+  if (status === 2 || status === 3) return `pool on ice (status ${status}): borrowing disabled`;
+  if (status === 4 || status === 5) return `pool frozen (status ${status}): deposits disabled`;
+  return `pool not active (status ${status})`;
+}
+
 export function scorePools(pools: PoolYield[], tolerance: RiskTolerance): ScoredPool[] {
   return pools.map((p) => {
     const utilRisk = Math.round((p.utilizationBps / 10000) * 70);
@@ -19,7 +27,9 @@ export function scorePools(pools: PoolYield[], tolerance: RiskTolerance): Scored
 
     let eligible = true;
     let reason: string | undefined;
+    const statusReason = poolStatusReason(p.poolStatus);
     if (!p.oracleHealthy) { eligible = false; reason = "oracle unhealthy / flagged"; }
+    else if (statusReason) { eligible = false; reason = statusReason; }
     else if (p.tvlUsdc < MIN_TVL[tolerance]) { eligible = false; reason = "TVL below tolerance floor"; }
     else if (riskScore > MAX_RISK[tolerance]) {
       eligible = false;

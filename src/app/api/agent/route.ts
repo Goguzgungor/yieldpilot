@@ -1,25 +1,20 @@
 import { NextResponse } from "next/server";
-import { getAgentKeypair, getDemoOwnerKeypair } from "../../../lib/agentKeys";
+import { getAgentKeypair } from "../../../lib/agentKeys";
 
 export const dynamic = "force-dynamic";
 
 /**
- * GET /api/agent — the backend agent's public key (so the UI installs the
- * correct External agent signer when authorizing the agent rules), plus the
- * deterministic demo-owner public key used by the fallback authorize flow.
+ * GET /api/agent — the backend agent's public key, so the UI installs the
+ * correct External agent signer when authorizing the agent rules.
  *
  * Response:
  *   {
  *     agentPublicKey:     "G…",                 // the agent's classic address
  *     agentPublicKeyHex:  "<32-byte raw hex>",  // External signer key bytes
- *     ownerPublicKey:     "G…",                 // demo-owner classic address
- *     ownerPublicKeyHex:  "<32-byte raw hex>",  // Default-rule owner signer bytes
- *     // Freighter cannot produce the OZ SmartAccount AuthPayload owner signature
- *     // (it only signs the standard Soroban auth preimage, without the OZ
- *     // rule-id tail), so step 2 is backend-assisted: deploy with this demo
- *     // owner, and /api/authorize owner-signs the add_context_rule ops.
- *     freighterCanSignOwnerAuth: false,
- *     ownerMode: "demo-backend-owner"
+ *     // New wallets are owned by the user's own G-account
+ *     // (`Signer::Delegated(G)`); the owner signs rule changes in Freighter.
+ *     freighterCanSignOwnerAuth: true,
+ *     ownerMode: "user-delegated"
  *   }
  *
  * Never returns any secret — only public G…/hex values derived from
@@ -28,14 +23,11 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     const agent = getAgentKeypair();
-    const owner = getDemoOwnerKeypair();
     return NextResponse.json({
       agentPublicKey: agent.publicKey(),
       agentPublicKeyHex: agent.rawPublicKey().toString("hex"),
-      ownerPublicKey: owner.publicKey(),
-      ownerPublicKeyHex: owner.rawPublicKey().toString("hex"),
-      freighterCanSignOwnerAuth: false,
-      ownerMode: "demo-backend-owner",
+      freighterCanSignOwnerAuth: true,
+      ownerMode: "user-delegated",
     });
   } catch (e) {
     return NextResponse.json(

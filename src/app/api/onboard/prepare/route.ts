@@ -3,14 +3,22 @@ import { BASE_FEE, TransactionBuilder } from "@stellar/stellar-sdk";
 import { z } from "zod";
 import { getRuntime } from "../../../../lib/runtime";
 import { getDemoOwnerKeypair } from "../../../../lib/agentKeys";
-import { buildDeployOp, buildFundUsdcOp, opFromXdr } from "../../../../lib/onboarding";
+import { addAgentRuleOps, buildDelegatedOwnerTx } from "../../../../lib/smartAccount";
+import { buildFinalizeOwnershipTx, readOwnershipMode } from "../../../../lib/ownership";
+import {
+  DEFAULT_CAP_STROOPS,
+  PERIOD_LEDGERS,
+  buildDeployOp,
+  buildFundUsdcOp,
+  opFromXdr,
+} from "../../../../lib/onboarding";
 
 export const dynamic = "force-dynamic";
 
 const PrepareInput = z.object({
   owner: z.string().min(1),
-  step: z.enum(["deploy", "fund"]),
-  /** Smart wallet C-address (required for `fund`). */
+  step: z.enum(["deploy", "authorize-pool", "authorize-usdc", "fund", "finalize-ownership"]),
+  /** Smart wallet C-address (required for `authorize-*` and `fund`). */
   smartWallet: z.string().min(1).optional(),
   /** Amount in stroops (decimal string) — required for `fund`. */
   amountStroops: z.string().regex(/^\d+$/).optional(),
@@ -25,14 +33,26 @@ const PrepareInput = z.object({
  * bundle stays SDK-free; the client only runs Freighter `signTransaction` on
  * the returned XDR, then POSTs it to `/api/onboard/submit`.
  *
- *   step="deploy" → createCustomContract (new per-user smart account). The
- *                   wallet's Default-rule owner is the backend demo owner (so
- *                   /api/authorize can owner-sign add_context_rule). Response
- *                   also includes the deterministic `contractId`.
- *   step="fund"   → USDC SAC transfer(owner → smartWallet, amountStroops).
+ *   step="deploy"         → createCustomContract (new per-user smart account)
+ *                           whose Default-rule owner is `Delegated(owner)` —
+ *                           the user's own G-account. Response also includes
+ *                           the deterministic `contractId`.
+ *   step="authorize-pool" → add_context_rule(CallContract(POOL)) for the agent,
+ *                           guarded by the Vigil RiskGate policy.
+ *   step="authorize-usdc" → add_context_rule(CallContract(USDC)), spending-capped
+ *                           and guarded (transfers may only pay the pool).
+ *                           Both are owner-authorized via the Delegated signer
+ *                           (smartAccount.ts buildDelegatedOwnerTx): the nested
+ *                           __check_auth authorization is a source-account
+ *                           entry, so the user's envelope signature covers it.
+ *   step="fund"           → USDC SAC transfer(owner → smartWallet, amountStroops).
+ *   step="finalize-ownership" → legacy wallets only, after
+ *                           scripts/migrate-legacy-accounts.ts made the user
+ *                           co-owner: remove the backend demo owner, co-signed
+ *                           by the backend for exactly this call.
  *
- * Both ops are authorized by the user's classic account, so the user signs the
- * whole envelope (no smart-account AuthPayload).
+ * In every step the user signs the whole envelope in Freighter; the backend
+ * never holds an owner key for new wallets.
  */
 export async function POST(req: Request) {
   let body: unknown;
@@ -60,9 +80,62 @@ export async function POST(req: Request) {
     let opXdr: string;
     let contractId: string | undefined;
 
+    if (step === "finalize-ownership") {
+      const smartWallet = parsed.data.smartWallet;
+      if (!smartWallet) {
+        return NextResponse.json({ error: "finalize-ownership requires smartWallet" }, { status: 400 });
+      }
+      const demoOwner = getDemoOwnerKeypair();
+      const mode = await readOwnershipMode({
+        server,
+        networkPassphrase,
+        readerSource: rt.agentKeypair.publicKey(),
+        smartWallet,
+        owner,
+        demoOwner: { verifier: rt.cfg.ed25519VerifierId, publicKeyHex: demoOwner.rawPublicKey().toString("hex") },
+      });
+      if (mode !== "co-owned") {
+        return NextResponse.json({ error: `nothing to finalize: ownership is "${mode}"` }, { status: 409 });
+      }
+      const tx = await buildFinalizeOwnershipTx({
+        server,
+        networkPassphrase,
+        smartWallet,
+        owner,
+        demoOwner,
+        verifier: rt.cfg.ed25519VerifierId,
+      });
+      return NextResponse.json({ xdr: tx.toXDR() });
+    }
+
+    if (step === "authorize-pool" || step === "authorize-usdc") {
+      const smartWallet = parsed.data.smartWallet;
+      if (!smartWallet) {
+        return NextResponse.json({ error: `${step} requires smartWallet` }, { status: 400 });
+      }
+      const { poolRuleOp, usdcRuleOp } = addAgentRuleOps({
+        smartWallet,
+        poolId: rt.cfg.execPoolId,
+        usdcSac: rt.cfg.execUsdcContractId,
+        verifier: rt.cfg.ed25519VerifierId,
+        agentPublicKeyHex: rt.agentKeypair.rawPublicKey().toString("hex"),
+        spendingPolicy: rt.cfg.spendingPolicyId,
+        capStroops: DEFAULT_CAP_STROOPS,
+        periodLedgers: PERIOD_LEDGERS,
+        guard: rt.cfg.vigilGuard,
+      });
+      const tx = await buildDelegatedOwnerTx({
+        server,
+        smartWallet,
+        owner,
+        networkPassphrase,
+        op: step === "authorize-pool" ? poolRuleOp : usdcRuleOp,
+      });
+      return NextResponse.json({ xdr: tx.toXDR() });
+    }
+
     if (step === "deploy") {
-      const ownerHex = getDemoOwnerKeypair().rawPublicKey().toString("hex");
-      const deploy = buildDeployOp({ deployer: owner, ownerPublicKeyHex: ownerHex });
+      const deploy = buildDeployOp({ deployer: owner, ownerAddress: owner });
       opXdr = deploy.opXdr;
       contractId = deploy.contractId;
     } else {

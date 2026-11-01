@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { OnboardingState, OnboardingStep, RegisteredUser, StepKey } from "./useOnboarding";
+import type { OnboardingState, OnboardingStep, OwnershipMode, RegisteredUser, StepKey } from "./useOnboarding";
 import { formatUsdc, truncateAddress } from "./format";
 import { stellarExpertUrl, testnetContractUrl, testnetTxUrl } from "./links";
 
@@ -49,6 +49,9 @@ export default function Onboarding({ ownerAddress, onboarding, open, onClose }: 
     saUsdcStroops,
     resetDemo,
     resetting,
+    ownership,
+    finalizing,
+    finalizeOwnership,
   } = onboarding;
   const [amount, setAmount] = useState("500");
 
@@ -97,7 +100,15 @@ export default function Onboarding({ ownerAddress, onboarding, open, onClose }: 
             )}
 
             {ownerAddress && registered && (
-              <RegisteredView user={registered} onResetDemo={resetDemo} resetting={resetting} />
+              <RegisteredView
+                user={registered}
+                onResetDemo={resetDemo}
+                resetting={resetting}
+                ownership={ownership}
+                finalizing={finalizing}
+                onFinalize={finalizeOwnership}
+                error={error}
+              />
             )}
 
             {ownerAddress && registered === false && (
@@ -159,12 +170,12 @@ export default function Onboarding({ ownerAddress, onboarding, open, onClose }: 
                 <details className="ys-fineprint">
                   <summary>How signing works</summary>
                   <p className="ys-prose">
-                    Step 3 mints our own testnet USDC into your smart account (we control the USDC
-                    issuer on testnet), so you never need to source USDC. Step 2 is signed by a
-                    backend demo owner: Freighter&rsquo;s <code className="ys-code">signAuthEntry</code>{" "}
-                    only signs the standard Soroban auth preimage, not the OpenZeppelin
-                    SmartAccount&rsquo;s custom AuthPayload digest (which appends the context-rule
-                    ids). Steps 1 and 4 are signed natively in your Freighter wallet.
+                    Your Freighter account owns the smart account: it is the wallet&rsquo;s
+                    Default-rule signer, so only you can change its rules or move funds out.
+                    Step 1 deploys it and step 2 adds the agent&rsquo;s two restricted rules, each
+                    signed in Freighter (three prompts in total). Step 3 mints our own testnet USDC
+                    into your smart account (we control the USDC issuer on testnet), so you never
+                    need to source USDC.
                     {smartWallet && (
                       <>
                         {" "}
@@ -203,10 +214,18 @@ function RegisteredView({
   user,
   onResetDemo,
   resetting,
+  ownership,
+  finalizing,
+  onFinalize,
+  error,
 }: {
   user: RegisteredUser;
   onResetDemo: () => Promise<void>;
   resetting: boolean;
+  ownership: OwnershipMode | null;
+  finalizing: boolean;
+  onFinalize: () => Promise<void>;
+  error: string | null;
 }) {
   const supplied = user.position.poolId ? formatUsdc(user.position.amountUsdc) : "0";
 
@@ -259,6 +278,31 @@ function RegisteredView({
             Idle — the agent will supply your USDC into the best eligible pool on its next tick.
           </div>
         )}
+      </div>
+
+      <div className="ys-block">
+        <div className="ys-metric-label">OWNERSHIP</div>
+        <div className="ys-position-pool ys-prose">
+          {ownership === null && "Checking who owns your smart account…"}
+          {ownership === "user" && "You own this smart account — only your Freighter wallet can change its rules."}
+          {ownership === "co-owned" &&
+            "This wallet was created before user-owned onboarding. The backend's owner key is still a co-owner; remove it with one Freighter signature."}
+          {ownership === "backend" &&
+            "This wallet was created before user-owned onboarding and is still owned by the backend demo key. It will be handed to you in the next migration."}
+          {ownership === "unknown" && "Ownership could not be read right now."}
+        </div>
+        {ownership === "co-owned" && (
+          <button
+            type="button"
+            className="ys-cta"
+            style={{ justifyContent: "center", marginTop: 8 }}
+            disabled={finalizing}
+            onClick={() => void onFinalize()}
+          >
+            {finalizing ? "Signing…" : "Finalize ownership"}
+          </button>
+        )}
+        {error && <div className="ys-error ys-prose">{error}</div>}
       </div>
 
       {/* Exec contracts block — testnet contract links */}

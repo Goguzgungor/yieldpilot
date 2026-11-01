@@ -58,6 +58,20 @@ const Schema = z.object({
   // agent-key signer. Default "smart-account" now that it's proven on testnet.
   WALLET_MODE: z.enum(["keypair", "smart-account"]).default("smart-account"),
 
+  // ── Vigil RiskGate (contracts/vigil-guard + vigil-registry, testnet) ───────
+  // The guard policy is attached to BOTH agent rules of every new wallet: it
+  // pins Blend submits to from = spender = to = the wallet and supply/withdraw
+  // only, and limits USDC transfers to the pool. Always on (it closes the
+  // "agent withdraws to any address" hole).
+  VIGIL_GUARD_ID: z.string().min(1).default("CD6BDS7R5K3IUCQSJUZUWAGLTR47EZOYEVCO5MPT7YGNBNQRHSNY5VMS"),
+  // OPTIONAL rating gate: when set, deposits additionally need a fresh rating
+  // >= VIGIL_MIN_SCORE from this registry (withdrawals are never gated). Leave
+  // unset unless a publisher keeps the exec pool's rating fresh, or deposits
+  // fail closed.
+  VIGIL_REGISTRY_ID: z.string().min(1).optional(),
+  VIGIL_MIN_SCORE: z.coerce.number().int().min(0).max(100).default(60),
+  VIGIL_MAX_AGE_SEC: z.coerce.number().int().positive().default(7200),
+
   // ── Guard rails ───────────────────────────────────────────────────────────
   PER_TX_CAP_USDC: z.coerce.number().positive(),
   DAILY_CAP_USDC: z.coerce.number().positive(),
@@ -134,6 +148,13 @@ export function parseConfig(env: Record<string, string | undefined>) {
     ed25519VerifierId: e.ED25519_VERIFIER_ID,
     spendingPolicyId: e.SPENDING_POLICY_ID,
     walletMode: e.WALLET_MODE,
+    // Vigil RiskGate
+    vigilGuard: {
+      id: e.VIGIL_GUARD_ID,
+      registry: e.VIGIL_REGISTRY_ID,
+      minScore: e.VIGIL_MIN_SCORE,
+      maxAgeSecs: BigInt(e.VIGIL_MAX_AGE_SEC),
+    },
     // Guard rails
     perTxCapStroops: toStroops(e.PER_TX_CAP_USDC),
     dailyCapStroops: toStroops(e.DAILY_CAP_USDC),

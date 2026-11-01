@@ -34,4 +34,20 @@ describe("scorePools", () => {
     expect(risky.reason).toMatch(/risk \d+ > 65/);
     expect(risky.reason).toMatch(/high utilization 95%/);
   });
+
+  it("marks on-ice and frozen Blend pools ineligible even when the numbers look fine", () => {
+    // status 3 = On_Ice (borrowing disabled), 4 = Admin_Frozen (deposits disabled)
+    const onIce = scorePools([{ ...base, poolStatus: 3 }], "aggressive")[0];
+    const frozen = scorePools([{ ...base, poolStatus: 4 }], "aggressive")[0];
+    expect(onIce.eligible).toBe(false);
+    expect(onIce.reason).toMatch(/on ice/i);
+    expect(frozen.eligible).toBe(false);
+    expect(frozen.reason).toMatch(/frozen/i);
+  });
+
+  it("keeps active pools (status 0/1) and pools with unknown status eligible", () => {
+    expect(scorePools([{ ...base, poolStatus: 0 }], "balanced")[0].eligible).toBe(true);
+    expect(scorePools([{ ...base, poolStatus: 1 }], "balanced")[0].eligible).toBe(true);
+    expect(scorePools([base], "balanced")[0].eligible).toBe(true);
+  });
 });

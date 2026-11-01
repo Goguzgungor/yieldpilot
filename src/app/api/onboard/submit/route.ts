@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { TransactionBuilder, rpc, type Transaction } from "@stellar/stellar-sdk";
+import { TransactionBuilder, rpc, scValToNative, type Transaction } from "@stellar/stellar-sdk";
 import { z } from "zod";
 import { getRuntime } from "../../../../lib/runtime";
 
@@ -17,7 +17,8 @@ const SubmitInput = z.object({
  * `/api/onboard/prepare` + Freighter `signTransaction`) to the testnet RPC and
  * poll to a final status. Keeps `@stellar/stellar-sdk` out of the browser bundle.
  *
- * Returns `{ hash, success, status }`.
+ * Returns `{ hash, success, status, contextRuleId? }` — `contextRuleId` is the
+ * id from the returned `ContextRule` when the tx was an `add_context_rule`.
  */
 export async function POST(req: Request) {
   let body: unknown;
@@ -57,11 +58,21 @@ export async function POST(req: Request) {
       g = await server.getTransaction(sent.hash);
     }
     const success = g.status === "SUCCESS";
+    let contextRuleId: number | undefined;
+    if (success) {
+      try {
+        const ret = (g as rpc.Api.GetSuccessfulTransactionResponse).returnValue;
+        const native = ret ? scValToNative(ret) : undefined;
+        if (native && typeof native === "object" && typeof native.id === "number") contextRuleId = native.id;
+      } catch {
+        // not a ContextRule return value
+      }
+    }
     if (parsed.data.label) {
       await rt.db.log("onboard", `${parsed.data.label}: ${sent.hash} → ${g.status}`, { hash: sent.hash, status: g.status });
     }
     return NextResponse.json(
-      { hash: sent.hash, success, status: g.status },
+      { hash: sent.hash, success, status: g.status, contextRuleId },
       { status: success ? 200 : 502 },
     );
   } catch (e) {
