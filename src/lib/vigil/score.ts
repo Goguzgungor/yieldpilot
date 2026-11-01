@@ -98,6 +98,8 @@ export const HARD_CAPS = {
   sdexManipulable: 34,
   /** collateral whose price source cannot be identified ⇒ grade ≤ C, not eligible */
   unverifiableCollateralSource: 64,
+  /** any collateral priced below THRESHOLDS.robustSourceQuality ⇒ grade ≤ B (an A needs robust feeds) */
+  weakCollateralSource: 79,
 } as const;
 
 export const THRESHOLDS = {
@@ -111,6 +113,8 @@ export const THRESHOLDS = {
   utilizationZero: 0.95,
   /** Effective backstop / liabilities giving full marks. */
   backstopFullCoverage: 0.1,
+  /** sourceQuality at or above this is a robust price source (RedStone = 85, Reflector CEX/FX = 95). */
+  robustSourceQuality: 85,
   /** Below this many USD of liabilities the pool has nothing at risk. */
   minLiabilitiesUsd: 1_000,
   /** Below this much borrowable liquidity there is nothing to drain. */
@@ -379,6 +383,17 @@ export function concentrationFactor(d: Derived[]): FactorCalc {
 
 // ── main entry ───────────────────────────────────────────────────────────────
 
+/**
+ * Collateral whose price source is not robust (quality below
+ * THRESHOLDS.robustSourceQuality), excluding SDEX-priced assets whose order
+ * book was deep enough to make manipulation unprofitable (manipulation
+ * sub-score ≥ 75), which supplyCapFactor also treats as robust.
+ */
+export function weakCollateral(d: Derived[], manip: ManipulationAssessment[]): Derived[] {
+  const depthVerified = new Set(manip.filter((m) => m.score >= 75).map((m) => m.assetId));
+  return d.filter((x) => x.isCollateral && x.priced && sourceQuality(x.r) < THRESHOLDS.robustSourceQuality && !depthVerified.has(x.r.assetId));
+}
+
 export function ratePool(s: PoolSnapshot, opts: RateOptions = {}): PoolRating {
   const nowSec = s.asOf.timestamp;
   const d = derive(s);
@@ -422,6 +437,13 @@ export function ratePool(s: PoolSnapshot, opts: RateOptions = {}): PoolRating {
     eligible = false;
     score = Math.min(score, HARD_CAPS.unverifiableCollateralSource);
     hardRules.push(`HR5 collateral price source unidentifiable (${opaque.map((x) => x.r.symbol).join(", ")}) ⇒ not eligible, grade ≤ C`);
+  }
+  const weakColl = weakCollateral(d, manip);
+  if (weakColl.length && score > HARD_CAPS.weakCollateralSource) {
+    score = HARD_CAPS.weakCollateralSource;
+    hardRules.push(
+      `HR6 collateral priced by a weak source (${weakColl.map((x) => `${x.r.symbol} ← ${x.r.source.kind}`).join(", ")}) ⇒ grade ≤ B`,
+    );
   }
   score = Math.round(clamp(score));
   if (score < 50 && eligible) {

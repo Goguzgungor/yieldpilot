@@ -150,6 +150,22 @@ Vigil reports the cheapest ρ. A ρ computed from a book that was fully observed
 
 Grade bands: A ≥ 80, B ≥ 65, C ≥ 50, D ≥ 35, E < 35.
 
+**HR6 (added 2026-11-01).** If any collateral is priced by a source below the robust threshold (`sourceQuality` < 85: anything weaker than RedStone, Reflector CEX/FX or the base asset), the score is capped at 79: the pool can be B but not A. SDEX-priced collateral whose order book was deep enough to make manipulation unprofitable (manipulation sub-score ≥ 75) counts as robust, as it already does for supply caps. Without this rule a pool like YieldBlox (PYUSD at a fixed peg) or the Etherfuse pools (CETES/USTRY/TESOURO from the pool admin's own push oracle) would reach A as soon as the backstop came back, although oracle configuration is the failure mode Vigil exists to catch.
+
+### What would raise a rating (`paths`)
+
+Each rating carries `paths.B` and `paths.A`: the smallest set of protocol-side changes after which the engine itself would give 65+ / 80+ (`src/lib/vigil/whatif.ts`). The levers are applied to the snapshot and re-scored with `ratePool`, so the answer always follows the current rules:
+
+| Lever | Change simulated |
+|---|---|
+| `backstop` | backstop above Blend's threshold, covering 10% of borrows, under 30% queued; On_Ice / Frozen pools become Active, as Blend's `update_status` would do |
+| `activate` | the admin sets Admin_On_Ice / Admin_Frozen / Setup pools Active (only together with `backstop` when the threshold is not met, as Blend requires) |
+| `oracle` | the weak collateral sources above become a CEX/FX feed behind a max_dev limit |
+| `caps` | supply caps so a weakly-priced collateral's borrow power is ≤ 10% of available liquidity |
+| `fresh` | stale prices republished |
+
+Utilization and collateral mix are market conditions, not levers. A missing price cannot be simulated, so pools with one report the target as out of reach. Paths are informational and not part of `reasonsHash`.
+
 ### DeFindex
 
 A strategy's rating is its underlying pool's rating (worst-of). The pool is taken from the strategy's **on-chain** `Config.pool` where it can be read, and any difference from the config is reported.

@@ -22,6 +22,17 @@ interface Yield {
   suppliedUsd: number | null;
 }
 
+interface GradePath {
+  target: "A" | "B";
+  already: boolean;
+  reachable: boolean;
+  levers: string[];
+  steps: string[];
+  score: number | null;
+  grade: string | null;
+  blocker?: string;
+}
+
 interface Rating {
   poolId: string;
   name: string;
@@ -40,6 +51,7 @@ interface Rating {
   engineVersion: string;
   underlying?: string;
   yields?: Yield[];
+  paths?: { A: GradePath; B: GradePath };
 }
 
 interface RatingsResponse {
@@ -102,6 +114,7 @@ const RULES: Array<{ code: string; text: (rule: string) => string }> = [
     },
   },
   { code: "HR4", text: () => "Overall score is below 50" },
+  { code: "HR6", text: () => "A collateral is priced by a weak source; an A needs robust feeds on every collateral" },
 ];
 
 function mainReason(r: Rating): string {
@@ -122,6 +135,61 @@ function usd(n: number): string {
   if (n >= 1e6) return `$${(n / 1e6).toFixed(1)}M`;
   if (n >= 1e3) return `$${(n / 1e3).toFixed(1)}K`;
   return `$${n.toFixed(0)}`;
+}
+
+/** One-line summary for the table: how far B and A are. */
+function pathSummary(r: Rating): string | null {
+  const p = r.paths;
+  if (!p) return null;
+  const one = (g: GradePath) =>
+    g.already ? `${g.target}: already` : g.reachable ? `${g.target}: ${g.steps.length} change${g.steps.length === 1 ? "" : "s"}` : `${g.target}: out of reach`;
+  return p.A.already ? "Rated A" : `${one(p.B)} · ${one(p.A)}`;
+}
+
+function PathBlock({ path, label }: { path: GradePath; label: string }) {
+  if (path.already) return null;
+  return (
+    <div className="rt-path">
+      <div className="rt-path-head">{label}</div>
+      {path.reachable ? (
+        <>
+          <ol>
+            {path.steps.map((s) => (
+              <li key={s}>{s}</li>
+            ))}
+          </ol>
+          <div className="rt-path-result">
+            The engine would then give {path.score} ({path.grade}).
+          </div>
+        </>
+      ) : (
+        <div className="rt-path-result">Out of reach. {path.blocker}</div>
+      )}
+    </div>
+  );
+}
+
+function Paths({ r }: { r: Rating }) {
+  const p = r.paths;
+  if (!p || p.A.already) return null;
+  const same = p.B.reachable && p.A.reachable && p.B.levers.join() === p.A.levers.join();
+  return (
+    <>
+      <div className="rt-h">
+        What would raise this rating{r.protocol === "defindex" ? " (changes in the underlying pool)" : ""}
+      </div>
+      <div className="rt-paths">
+        {same ? (
+          <PathBlock path={p.A} label={p.B.already ? "To reach A (80+)" : "To reach B and A (80+)"} />
+        ) : (
+          <>
+            <PathBlock path={p.B} label="To reach B (65+)" />
+            <PathBlock path={p.A} label="To reach A (80+)" />
+          </>
+        )}
+      </div>
+    </>
+  );
 }
 
 function pct(x: number): string {
@@ -176,6 +244,7 @@ function Detail({ r }: { r: Rating }) {
           </ul>
         </div>
       )}
+      <Paths r={r} />
       {r.yields && r.yields.length > 0 && (
         <>
           <div className="rt-h">{r.protocol === "defindex" ? "Rate in the underlying pool (before DeFindex fees)" : "Current rates"}</div>
@@ -342,7 +411,10 @@ export default function RatingsView() {
                         "—"
                       )}
                     </span>
-                    <span className="rt-reason">{mainReason(r)}</span>
+                    <span className="rt-reason">
+                      {mainReason(r)}
+                      {pathSummary(r) && <small className="rt-reason-path">{pathSummary(r)}</small>}
+                    </span>
                   </button>
                   {isOpen && <Detail r={r} />}
                 </Fragment>

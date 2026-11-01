@@ -86,7 +86,7 @@ export function rateDefindexStrategy(
     [pool.reasonsHash],
   );
   const yields = snap ? reserveYields(snap).filter((y) => y.assetId === assetId) : [];
-  return { ...rating, uncappedScore: pool.uncappedScore, yields };
+  return { ...rating, uncappedScore: pool.uncappedScore, yields, paths: pool.paths };
 }
 
 /** Rate a vault spreading over several strategies: worst-of its strategy ratings. */

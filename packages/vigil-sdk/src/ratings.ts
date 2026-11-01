@@ -20,6 +20,18 @@ export interface ReserveYield {
   suppliedUsd: number | null;
 }
 
+/** The smallest set of protocol-side changes after which the engine would grade the pool B / A. */
+export interface GradePath {
+  target: "A" | "B";
+  already: boolean;
+  reachable: boolean;
+  levers: ("backstop" | "activate" | "oracle" | "caps" | "fresh")[];
+  steps: string[];
+  score: number | null;
+  grade: "A" | "B" | "C" | "D" | "E" | null;
+  blocker?: string;
+}
+
 export interface PoolRating {
   poolId: string;
   name: string;
@@ -37,6 +49,8 @@ export interface PoolRating {
   reasonsHash: string;
   /** Current rates of the enabled reserves (DeFindex: the strategy's asset), highest first. */
   yields?: ReserveYield[];
+  /** What would raise the rating to B / A (DeFindex: the underlying pool's). */
+  paths?: { A: GradePath; B: GradePath };
 }
 
 export interface RatingsResponse {

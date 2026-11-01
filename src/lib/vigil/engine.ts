@@ -5,6 +5,7 @@
 import { rateDefindexStrategy, type DefindexStrategyInput } from "./defindex";
 import { discoverBlendPools, type DiscoveryResult, type PoolIdSource, type PoolVerifier } from "./discovery";
 import { ENGINE_VERSION, ratePool, type RateOptions } from "./score";
+import { pathsToGrades } from "./whatif";
 import type { PoolRating, PoolSnapshot } from "./types";
 
 export interface DefindexStrategyRef {
@@ -50,7 +51,7 @@ export async function runVigil(
     try {
       const snap = await deps.snapshot(id);
       snapshots[id] = snap;
-      pools.push(ratePool(snap, opts.rate));
+      pools.push({ ...ratePool(snap, opts.rate), paths: pathsToGrades(snap, opts.rate) });
       log(`rated ${snap.name} ${id.slice(0, 6)}…`);
     } catch (e) {
       failures.push({ id, error: e instanceof Error ? e.message : String(e) });

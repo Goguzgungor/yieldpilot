@@ -144,6 +144,29 @@ export interface RatingFactor {
 
 export type Grade = "A" | "B" | "C" | "D" | "E";
 
+export type LeverKey = "backstop" | "activate" | "oracle" | "caps" | "fresh";
+
+export interface GradePath {
+  target: "A" | "B";
+  /** Already at or above the target. */
+  already: boolean;
+  reachable: boolean;
+  /** The smallest combination of levers that reaches the target. */
+  levers: LeverKey[];
+  /** Plain-language steps, one per lever. */
+  steps: string[];
+  /** Score / grade the engine gives once those changes are made (or today, if already there). */
+  score: number | null;
+  grade: Grade | null;
+  /** Why the target is out of reach, when it is. */
+  blocker?: string;
+}
+
+export interface GradePaths {
+  A: GradePath;
+  B: GradePath;
+}
+
 /** What a reserve pays right now — shown next to the rating, never part of it. */
 export interface ReserveYield {
   assetId: string;
@@ -183,4 +206,6 @@ export interface PoolRating {
   underlying?: string[];
   /** Current rates of the enabled reserves (DeFindex: the strategy's asset), highest supply rate first. */
   yields?: ReserveYield[];
+  /** What would raise the rating to B / A (DeFindex: the underlying pool's). Not part of reasonsHash. */
+  paths?: GradePaths;
 }
