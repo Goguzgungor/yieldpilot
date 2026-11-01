@@ -264,14 +264,16 @@ input { font: inherit; color: inherit; }
 .rt-g-D, .rt-g-E { color: var(--err); }
 
 .rt-table { margin-top: 44px; border-top: 1px solid var(--hair); }
-.rt-row { display: grid; grid-template-columns: minmax(170px, 1.6fr) 0.9fr 0.45fr 0.6fr 0.7fr 0.7fr 2.4fr; gap: 12px; align-items: baseline;
+.rt-row { display: grid; grid-template-columns: minmax(170px, 1.6fr) 0.9fr 0.45fr 0.6fr 0.7fr 0.7fr 0.8fr 2.2fr; gap: 12px; align-items: baseline;
   width: 100%; padding: 13px 0; border-top: 1px solid var(--faint); font-size: 13.5px; color: var(--ink); }
 .rt-row:first-child { border-top: 0; }
 button.rt-row:hover, .rt-row--open { background: var(--faint); }
 .rt-row--head { font: 400 10px/1 var(--mono); letter-spacing: 0.15em; text-transform: uppercase; color: var(--dim); }
 .rt-pool { color: var(--ink-hi); }
 .rt-pool small, .rt-row small { display: block; font: 400 10.5px var(--mono); color: var(--dim); margin-top: 3px; }
-.rt-row span:nth-child(4) small { display: inline; }
+.rt-row span:nth-child(4) small, .rt-row span:nth-child(7) small { display: inline; }
+.rt-rates { display: grid; grid-template-columns: repeat(4, minmax(80px, max-content)); gap: 6px 28px; font: 400 12.5px var(--mono); color: var(--ink); }
+.rt-rates-head { font: 400 10px/1 var(--mono); letter-spacing: 0.15em; text-transform: uppercase; color: var(--dim); }
 .rt-grade { font: 500 17px/1 var(--display); }
 .rt-yes { color: var(--ink-hi); }
 .rt-no { color: var(--err); }
@@ -297,12 +299,14 @@ button.rt-row:hover, .rt-row--open { background: var(--faint); }
 @media (max-width: 880px) {
   .rt-page { --rt-name-w: 120px; }
   .rt-track-sub { display: none; }
-  .rt-row { grid-template-columns: 1fr auto auto; grid-template-areas: "pool grade dep" "reason reason reason"; }
+  .rt-row { grid-template-columns: 1fr auto auto auto; grid-template-areas: "pool apr grade dep" "reason reason reason reason"; }
   .rt-row > :nth-child(1) { grid-area: pool; }
   .rt-row > :nth-child(3) { grid-area: grade; }
   .rt-row > :nth-child(5) { grid-area: dep; }
-  .rt-row > :nth-child(7) { grid-area: reason; }
+  .rt-row > :nth-child(7) { grid-area: apr; }
+  .rt-row > :nth-child(8) { grid-area: reason; }
   .rt-row > :nth-child(2), .rt-row > :nth-child(4), .rt-row > :nth-child(6) { display: none; }
+  .rt-rates { grid-template-columns: repeat(4, auto); gap: 6px 14px; }
   .rt-row--head { display: none; }
   .rt-factors { grid-template-columns: 1fr 60px 28px; }
   .rt-f-note { grid-column: 1 / -1; margin-bottom: 6px; }

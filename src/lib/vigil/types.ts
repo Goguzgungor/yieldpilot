@@ -71,6 +71,12 @@ export interface ReserveSnapshot {
   /** Oracle price timestamp (unix seconds), null when no price. */
   priceTimestamp: number | null;
   source: AssetPriceSource;
+  /**
+   * Current supply / borrow APR (0..1) from the Blend SDK. Informational: not a
+   * risk input and not hashed into reasonsHash.
+   */
+  supplyApr?: number | null;
+  borrowApr?: number | null;
 }
 
 export interface BackstopSnapshot {
@@ -138,6 +144,18 @@ export interface RatingFactor {
 
 export type Grade = "A" | "B" | "C" | "D" | "E";
 
+/** What a reserve pays right now — shown next to the rating, never part of it. */
+export interface ReserveYield {
+  assetId: string;
+  symbol: string;
+  /** 0..1 */
+  supplyApr: number;
+  /** 0..1, null when unknown */
+  borrowApr: number | null;
+  /** Supplied value in USD, null when the reserve has no price. */
+  suppliedUsd: number | null;
+}
+
 export interface PoolRating {
   poolId: string;
   name: string;
@@ -163,4 +181,6 @@ export interface PoolRating {
   engineVersion: string;
   /** DeFindex: underlying Blend pool ids the rating was derived from. */
   underlying?: string[];
+  /** Current rates of the enabled reserves (DeFindex: the strategy's asset), highest supply rate first. */
+  yields?: ReserveYield[];
 }

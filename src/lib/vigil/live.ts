@@ -336,6 +336,8 @@ export function createLiveReaders(cfg: LiveConfig) {
         priceUsd: p ? Number(p.price) / 10 ** oracleDecimals : null,
         priceTimestamp: p ? p.timestamp : null,
         source: sources[r.assetId],
+        supplyApr: Number.isFinite(r.supplyApr) ? r.supplyApr : null,
+        borrowApr: Number.isFinite(r.borrowApr) ? r.borrowApr : null,
       };
     });
 

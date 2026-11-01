@@ -10,6 +10,16 @@ export interface RatingFactor {
   note: string;
 }
 
+/** What a reserve pays right now (informational; not part of the rating). */
+export interface ReserveYield {
+  assetId: string;
+  symbol: string;
+  /** 0..1 */
+  supplyApr: number;
+  borrowApr: number | null;
+  suppliedUsd: number | null;
+}
+
 export interface PoolRating {
   poolId: string;
   name: string;
@@ -25,6 +35,8 @@ export interface PoolRating {
   computedAt: string;
   /** sha256 hex of the canonical inputs+factors — the value published on-chain. */
   reasonsHash: string;
+  /** Current rates of the enabled reserves (DeFindex: the strategy's asset), highest first. */
+  yields?: ReserveYield[];
 }
 
 export interface RatingsResponse {

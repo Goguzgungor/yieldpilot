@@ -15,6 +15,7 @@ import {
   type PoolSnapshot,
   type RatingFactor,
   type ReserveSnapshot,
+  type ReserveYield,
 } from "./types";
 
 export const ENGINE_VERSION = "vigil-risk-v2.0.0";
@@ -463,7 +464,22 @@ export function ratePool(s: PoolSnapshot, opts: RateOptions = {}): PoolRating {
     computedAt: opts.now ?? nowSec,
     reasonsHash,
     engineVersion: ENGINE_VERSION,
+    yields: reserveYields(s),
   };
+}
+
+/** Current rates of the enabled reserves, highest supply APR first. Not a risk input. */
+export function reserveYields(s: PoolSnapshot): ReserveYield[] {
+  return s.reserves
+    .filter((r) => r.enabled && typeof r.supplyApr === "number" && Number.isFinite(r.supplyApr))
+    .map((r) => ({
+      assetId: r.assetId,
+      symbol: r.symbol,
+      supplyApr: r.supplyApr as number,
+      borrowApr: typeof r.borrowApr === "number" && Number.isFinite(r.borrowApr) ? r.borrowApr : null,
+      suppliedUsd: r.priceUsd === null ? null : r.supplied * r.priceUsd,
+    }))
+    .sort((a, b) => b.supplyApr - a.supplyApr);
 }
 
 /** The subset of the snapshot that determines the rating (hashed into reasonsHash). */

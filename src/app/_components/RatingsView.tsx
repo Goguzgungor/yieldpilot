@@ -14,6 +14,14 @@ interface Factor {
   note: string;
 }
 
+interface Yield {
+  assetId: string;
+  symbol: string;
+  supplyApr: number;
+  borrowApr: number | null;
+  suppliedUsd: number | null;
+}
+
 interface Rating {
   poolId: string;
   name: string;
@@ -31,6 +39,7 @@ interface Rating {
   reasonsHash: string;
   engineVersion: string;
   underlying?: string;
+  yields?: Yield[];
 }
 
 interface RatingsResponse {
@@ -115,6 +124,10 @@ function usd(n: number): string {
   return `$${n.toFixed(0)}`;
 }
 
+function pct(x: number): string {
+  return `${(x * 100).toFixed(2)}%`;
+}
+
 function when(epochSec: number): string {
   return new Date(epochSec * 1000).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
@@ -162,6 +175,25 @@ function Detail({ r }: { r: Rating }) {
             ))}
           </ul>
         </div>
+      )}
+      {r.yields && r.yields.length > 0 && (
+        <>
+          <div className="rt-h">{r.protocol === "defindex" ? "Rate in the underlying pool (before DeFindex fees)" : "Current rates"}</div>
+          <div className="rt-rates">
+            <span className="rt-rates-head">Asset</span>
+            <span className="rt-rates-head">Supply APR</span>
+            <span className="rt-rates-head">Borrow APR</span>
+            <span className="rt-rates-head">Supplied</span>
+            {r.yields.map((y) => (
+              <Fragment key={y.assetId}>
+                <span>{y.symbol}</span>
+                <span>{pct(y.supplyApr)}</span>
+                <span>{y.borrowApr === null ? "—" : pct(y.borrowApr)}</span>
+                <span>{y.suppliedUsd === null ? "—" : usd(y.suppliedUsd)}</span>
+              </Fragment>
+            ))}
+          </div>
+        </>
       )}
       <div className="rt-h">Factors</div>
       <div className="rt-factors">
@@ -271,6 +303,7 @@ export default function RatingsView() {
               <span>Score</span>
               <span>Deposits</span>
               <span>Supplied</span>
+              <span>Best supply APR</span>
               <span>Main reason</span>
             </div>
             {ratings.map((r) => {
@@ -299,6 +332,16 @@ export default function RatingsView() {
                       {r.eligibleForDeposit ? "Allowed" : "Blocked"}
                     </span>
                     <span>{usd(r.tvlUsd)}</span>
+                    <span>
+                      {r.yields && r.yields.length > 0 ? (
+                        <>
+                          {pct(r.yields[0].supplyApr)}
+                          <small> {r.yields[0].symbol}</small>
+                        </>
+                      ) : (
+                        "—"
+                      )}
+                    </span>
                     <span className="rt-reason">{mainReason(r)}</span>
                   </button>
                   {isOpen && <Detail r={r} />}

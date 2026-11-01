@@ -10,7 +10,7 @@
  * Not modelled (stated on every rating): DeFindex contract / keeper / upgrade risk.
  */
 import { sha256Canonical } from "./canonical";
-import { ENGINE_VERSION, gradeFor, HARD_CAPS, STATUS_LABELS } from "./score";
+import { ENGINE_VERSION, gradeFor, HARD_CAPS, reserveYields, STATUS_LABELS } from "./score";
 import type { PoolRating, PoolSnapshot, RatingFactor } from "./types";
 
 export interface DefindexStrategyInput {
@@ -85,7 +85,8 @@ export function rateDefindexStrategy(
     now ?? pool.computedAt,
     [pool.reasonsHash],
   );
-  return { ...rating, uncappedScore: pool.uncappedScore };
+  const yields = snap ? reserveYields(snap).filter((y) => y.assetId === assetId) : [];
+  return { ...rating, uncappedScore: pool.uncappedScore, yields };
 }
 
 /** Rate a vault spreading over several strategies: worst-of its strategy ratings. */
