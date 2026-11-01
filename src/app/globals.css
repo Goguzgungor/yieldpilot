@@ -173,6 +173,12 @@ input { font: inherit; color: inherit; }
 .signature { position: fixed; right: 20px; bottom: 26px; z-index: 5; pointer-events: none; padding: 8px 3px; background: var(--night);
   writing-mode: vertical-rl; transform: rotate(180deg); font: 400 9px/1 var(--mono); letter-spacing: 0.26em; color: var(--dim); text-transform: uppercase; }
 
+/* project links, bottom left (the signature sits bottom right) */
+.colophon { position: fixed; left: 20px; bottom: 26px; z-index: 6; display: flex; gap: 18px; padding: 6px 8px; background: var(--night);
+  font: 400 10px/1 var(--mono); letter-spacing: 0.1em; }
+.colophon a { color: var(--dim); text-decoration: none; }
+.colophon a:hover, .colophon a:focus-visible { color: var(--ink); }
+
 /* ── annotations on the plate ── */
 .plate-overlay { position: fixed; inset: 0; z-index: 4; pointer-events: none; }
 .pl { position: absolute; transform: translate(-50%, -100%); text-align: center; white-space: nowrap; pointer-events: auto;

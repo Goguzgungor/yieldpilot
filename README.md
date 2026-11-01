@@ -83,4 +83,6 @@ Copy `.env.example` to `.env`. `CLAUDE.md` describes the architecture: the scan/
 
 ## License
 
-⚠️ To be decided by the team. SCF reviewers expect an explicit open-source license, e.g. Apache-2.0.
+[Apache-2.0](LICENSE): the app, the risk engine, the Soroban contracts and the SDK.
+
+Follow the project on X: [@AsteriaStellar](https://x.com/AsteriaStellar).

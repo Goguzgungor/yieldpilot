@@ -50,3 +50,8 @@ export function testnetAccountUrl(addr: string): string {
 
 /** Where to send users who don't have the wallet extension (Varial, formerly Freighter) installed. */
 export const VARIAL_INSTALL_URL = "https://varialwallet.com/";
+
+/** The open-source repository (app, engine, contracts, SDK). */
+export const REPO_URL = "https://github.com/Goguzgungor/yieldpilot";
+/** The project's X account. */
+export const X_URL = "https://x.com/AsteriaStellar";

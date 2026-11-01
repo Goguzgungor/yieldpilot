@@ -6,6 +6,8 @@ import {
   testnetTxUrl,
   testnetAccountUrl,
   VARIAL_INSTALL_URL,
+  REPO_URL,
+  X_URL,
 } from "../app/_components/links";
 
 describe("link helpers", () => {
@@ -69,5 +71,10 @@ describe("link helpers", () => {
     const url = testnetContractUrl(id);
     expect(url).not.toContain("/WEIRD?ID");
     expect(url).toContain("C%2FWEIRD%3FID");
+  });
+
+  it("REPO_URL and X_URL point at the project's GitHub repo and X account", () => {
+    expect(REPO_URL).toBe("https://github.com/Goguzgungor/yieldpilot");
+    expect(X_URL).toBe("https://x.com/AsteriaStellar");
   });
 });

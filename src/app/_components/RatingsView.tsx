@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useState } from "react";
 import { truncateAddress } from "./format";
-import { stellarExpertUrl } from "./links";
+import { REPO_URL, stellarExpertUrl, X_URL } from "./links";
 
 // Shape of GET /api/ratings (src/lib/vigil/types.ts PoolRating, JSON-serialized).
 interface Factor {
@@ -105,14 +105,12 @@ const RULES: Array<{ code: string; text: (rule: string) => string }> = [
   { code: "HR5", text: () => "A collateral price source could not be identified" },
   {
     code: "HR1",
-    text: (rule) => {
-      const status = Number(rule.match(/status (\d)/)?.[1]);
-      if (status === 2 || status === 3) return "Pool is on ice: Blend has disabled borrowing";
-      if (status === 4 || status === 5) return "Pool is frozen: Blend has disabled deposits";
-      if (status === 6) return "Pool was never activated (setup)";
-      return "Pool is not active";
-    },
+    text: (rule) =>
+      Number(rule.match(/status (\d)/)?.[1]) === 6
+        ? "Pool was never launched; it takes no deposits"
+        : "Blend has closed deposits in this pool",
   },
+  { code: "HR7", text: () => "Uninsured: Blend's backstop is empty, so at most B" },
   { code: "HR4", text: () => "Overall score is below 50" },
   { code: "HR6", text: () => "A collateral is priced by a weak source; an A needs robust feeds on every collateral" },
 ];
@@ -128,6 +126,14 @@ function mainReason(r: Rating): string {
     if (hit) return viaPool(text(hit));
   }
   return viaPool(r.reasons[0]?.replace(/^underlying: /, "") ?? "");
+}
+
+/** Blend's own pool state, in plain words (pool.rs: borrowing off above 1, supplying off above 3). */
+function stateLabel(status: number): string {
+  if (status <= 1) return "Active";
+  if (status <= 3) return "Borrowing paused";
+  if (status <= 5) return "Deposits closed";
+  return "Not launched";
 }
 
 function usd(n: number): string {
@@ -311,7 +317,11 @@ export default function RatingsView() {
     };
   }, []);
 
-  const ratings = data ? [...data.ratings].sort((a, b) => b.score - a.score || b.tvlUsd - a.tvlUsd) : [];
+  // Pools that were never launched go last: they hold nothing and take no deposits.
+  const launchedFirst = (r: Rating) => (r.status === 6 ? 1 : 0);
+  const ratings = data
+    ? [...data.ratings].sort((a, b) => launchedFirst(a) - launchedFirst(b) || b.score - a.score || b.tvlUsd - a.tvlUsd)
+    : [];
   const pools = ratings.filter((r) => r.protocol === "blend");
   const open_ = pools.filter((r) => r.eligibleForDeposit).length;
 
@@ -323,9 +333,12 @@ export default function RatingsView() {
         </a>
         <h1 className="rt-title">Pool risk ratings</h1>
         <p className="rt-lede">
-          Every Blend V2 pool on Stellar mainnet and the DeFindex strategies that deposit into them, rated from on-chain
-          configuration: who prices each collateral, what the backstop can cover, pool status and reserve settings.
-          Higher is safer. A pool below grade C, or in any hard-rule state, should not receive new deposits.
+          Every Blend V2 pool on Stellar mainnet, and the DeFindex strategies that deposit into them. The grade answers one
+          question: how safe is it to supply here? It comes from each pool&rsquo;s on-chain setup: who prices its
+          collateral and how cheaply that price can be pushed, what the backstop can cover, borrowing pressure and
+          supply caps. A few rules set a ceiling. An uninsured pool, or one with a weak price feed, is at most B; a
+          missing price, at most D; collateral that can be profitably manipulated, E. Blend&rsquo;s own pool state is
+          shown separately: it decides whether you can deposit at all.
         </p>
       </header>
 
@@ -367,7 +380,7 @@ export default function RatingsView() {
           <section className="rt-table" aria-label="Ratings">
             <div className="rt-row rt-row--head">
               <span>Pool</span>
-              <span>Status</span>
+              <span>State</span>
               <span>Grade</span>
               <span>Score</span>
               <span>Deposits</span>
@@ -389,7 +402,7 @@ export default function RatingsView() {
                       {r.name}
                       <small>{r.protocol === "defindex" ? "DeFindex strategy" : truncateAddress(r.poolId, 4, 4)}</small>
                     </span>
-                    <span>{r.statusLabel.replace(/_/g, " ")}</span>
+                    <span title={r.statusLabel.replace(/_/g, " ")}>{stateLabel(r.status)}</span>
                     <span className={`rt-grade rt-g-${r.grade}`}>{r.grade}</span>
                     <span>
                       {r.score}
@@ -398,7 +411,7 @@ export default function RatingsView() {
                       )}
                     </span>
                     <span className={r.eligibleForDeposit ? "rt-yes" : "rt-no"}>
-                      {r.eligibleForDeposit ? "Allowed" : "Blocked"}
+                      {r.eligibleForDeposit ? "Allowed" : r.status >= 4 ? "Closed" : "Blocked"}
                     </span>
                     <span>{usd(r.tvlUsd)}</span>
                     <span>
@@ -432,6 +445,14 @@ export default function RatingsView() {
             or use the{" "}
             <a href="/api/ratings">
               JSON API
+            </a>
+            . The engine, contracts and SDK are open source (Apache-2.0) on{" "}
+            <a href={REPO_URL} target="_blank" rel="noreferrer">
+              GitHub
+            </a>
+            ; news on X at{" "}
+            <a href={X_URL} target="_blank" rel="noreferrer">
+              @AsteriaStellar
             </a>
             .
           </footer>

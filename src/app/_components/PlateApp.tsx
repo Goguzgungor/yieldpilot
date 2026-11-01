@@ -13,6 +13,7 @@ import SetupView from "./views/SetupView";
 import AccountView from "./views/AccountView";
 import HistoryView from "./views/HistoryView";
 import { extractAgentTxs, formatTimeAgo } from "./format";
+import { REPO_URL, X_URL } from "./links";
 import { routeName } from "./poolNames";
 import { agentStatus, routeVoice } from "../../lib/voice";
 import { routeRationale } from "../../lib/rationale";
@@ -227,6 +228,10 @@ export default function PlateApp() {
           </div>
         </>
       )}
+      <nav className="colophon" aria-label="Project links">
+        <a href={REPO_URL} target="_blank" rel="noreferrer">Source on GitHub ↗</a>
+        <a href={X_URL} target="_blank" rel="noreferrer">@AsteriaStellar ↗</a>
+      </nav>
       <div className="signature" aria-hidden="true">YieldPilot · Plate I</div>
       <div className="grain" aria-hidden="true" />
     </main>
