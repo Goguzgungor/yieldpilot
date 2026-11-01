@@ -48,5 +48,5 @@ export function testnetAccountUrl(addr: string): string {
   return `https://stellar.expert/explorer/testnet/account/${encodeURIComponent(addr)}`;
 }
 
-/** Where to send users who don't have the Freighter extension installed. */
-export const FREIGHTER_INSTALL_URL = "https://www.freighter.app/";
+/** Where to send users who don't have the wallet extension (Varial, formerly Freighter) installed. */
+export const VARIAL_INSTALL_URL = "https://varialwallet.com/";

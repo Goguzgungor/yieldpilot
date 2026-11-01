@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { probeWallet } from "../../lib/walletDetect";
 
 /**
  * Freighter wallet integration (client-only). Uses @stellar/freighter-api v6,
@@ -12,6 +13,10 @@ import { useCallback, useEffect, useState } from "react";
  *
  * The module is dynamically imported inside the handlers so it never runs during
  * SSR / `next build` (it touches `window`/the injected extension).
+ *
+ * Freighter is now Varial; the extension speaks the same protocol, so
+ * freighter-api still works. Detection goes through {@link probeWallet}: one
+ * unanswered `isConnected` is retried, never taken as "not installed".
  */
 export interface FreighterState {
   installed: boolean | null; // null = not yet checked
@@ -23,6 +28,9 @@ export interface FreighterState {
 
 // Pre-rename key, kept so a disconnect a user already chose still holds.
 const DISCONNECT_KEY = "yieldseeker:wallet-disconnected";
+
+const NOT_RESPONDING =
+  "Varial didn't respond. Open the Varial extension (unlock it if it's locked) and click Connect again.";
 
 export function useFreighter() {
   const [state, setState] = useState<FreighterState>({
@@ -40,8 +48,7 @@ export function useFreighter() {
     (async () => {
       try {
         const api = await import("@stellar/freighter-api");
-        const conn = await api.isConnected();
-        const installed = Boolean(conn?.isConnected);
+        const installed = await probeWallet(api.isConnected);
         if (cancelled) return;
         if (!installed) {
           setState((s) => ({ ...s, installed: false }));
@@ -81,9 +88,14 @@ export function useFreighter() {
     setState((s) => ({ ...s, connecting: true, error: null }));
     try {
       const api = await import("@stellar/freighter-api");
-      const conn = await api.isConnected();
-      if (!conn?.isConnected) {
-        setState((s) => ({ ...s, installed: false, connecting: false }));
+      if (!(await probeWallet(api.isConnected, { attempts: 2 }))) {
+        // Seen earlier on this page ⇒ installed but not answering right now
+        // (worker asleep, locked, or mid-update): say so, don't show "Install".
+        setState((s) =>
+          s.installed
+            ? { ...s, connecting: false, error: NOT_RESPONDING }
+            : { ...s, installed: false, connecting: false },
+        );
         return;
       }
       const access = await api.requestAccess();

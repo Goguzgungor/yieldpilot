@@ -5,7 +5,7 @@ import {
   testnetContractUrl,
   testnetTxUrl,
   testnetAccountUrl,
-  FREIGHTER_INSTALL_URL,
+  VARIAL_INSTALL_URL,
 } from "../app/_components/links";
 
 describe("link helpers", () => {
@@ -23,8 +23,8 @@ describe("link helpers", () => {
     );
   });
 
-  it("FREIGHTER_INSTALL_URL is the expected URL", () => {
-    expect(FREIGHTER_INSTALL_URL).toBe("https://www.freighter.app/");
+  it("VARIAL_INSTALL_URL points at Varial (Freighter's new name)", () => {
+    expect(VARIAL_INSTALL_URL).toBe("https://varialwallet.com/");
   });
 
   // ── new testnet helpers ──────────────────────────────────────────────────

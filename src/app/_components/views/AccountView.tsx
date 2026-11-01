@@ -30,7 +30,7 @@ export default function AccountView({ user, onBack, onDisconnect, onResetDemo, r
         <div className="addr" title={user.smartWallet}>{truncateAddress(user.smartWallet, 8, 8)}</div>
         <p className="lede">
           The agent acts on this account only through the two rules on the right. Anything else needs your own
-          signature in Freighter.
+          signature in Varial.
         </p>
         <p className="links">
           <a href={testnetContractUrl(user.smartWallet)} target="_blank" rel="noreferrer">View on stellar.expert ↗</a>
@@ -38,9 +38,9 @@ export default function AccountView({ user, onBack, onDisconnect, onResetDemo, r
         </p>
         <p className="hint">
           {ownership === null && "Checking who owns this account…"}
-          {ownership === "user" && "Only your Freighter wallet owns this account: nobody else can change its rules."}
+          {ownership === "user" && "Only your Varial wallet owns this account: nobody else can change its rules."}
           {ownership === "co-owned" &&
-            "This account was created before user-owned onboarding, so the backend's owner key is still a co-owner. Remove it with one Freighter signature."}
+            "This account was created before user-owned onboarding, so the backend's owner key is still a co-owner. Remove it with one Varial signature."}
           {ownership === "backend" &&
             "This account was created before user-owned onboarding and is still owned by the backend's demo key. It will be handed to you in the next migration."}
           {ownership === "unknown" && "Ownership could not be read right now."}

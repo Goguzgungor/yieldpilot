@@ -2,7 +2,7 @@
 
 import type { FreighterState } from "./useFreighter";
 import { truncateAddress } from "./format";
-import { FREIGHTER_INSTALL_URL } from "./links";
+import { VARIAL_INSTALL_URL } from "./links";
 
 interface Props {
   wallet: FreighterState;
@@ -20,11 +20,11 @@ interface Props {
 export default function TopBar({ wallet, registered, notSetUp, historyOn, onHome, onHistory, onRefresh, onWallet }: Props) {
   let chip: React.ReactNode;
   if (wallet.installed === false) {
-    chip = <a className="wallet plain underline" href={FREIGHTER_INSTALL_URL} target="_blank" rel="noreferrer">Install Freighter ↗</a>;
+    chip = <a className="wallet plain underline" href={VARIAL_INSTALL_URL} target="_blank" rel="noreferrer">Install Varial ↗</a>;
   } else if (!wallet.address) {
     chip = (
       <button className="wallet plain underline" onClick={onWallet} disabled={wallet.connecting}>
-        {wallet.connecting ? "Connecting…" : "Connect Freighter"}
+        {wallet.connecting ? "Connecting…" : "Connect Varial"}
       </button>
     );
   } else {

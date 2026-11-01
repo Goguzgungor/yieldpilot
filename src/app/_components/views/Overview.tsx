@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import type { ApiScoredPool } from "../types";
 import type { AgentTx } from "../format";
 import { formatApy, formatTimeAgo, truncateAddress } from "../format";
-import { FREIGHTER_INSTALL_URL, testnetTxUrl } from "../links";
+import { VARIAL_INSTALL_URL, testnetTxUrl } from "../links";
 import { routeName } from "../poolNames";
 import { usdc2 } from "../../../lib/voice";
 
@@ -75,10 +75,10 @@ export function VisitorView({ route, installed, connecting, error, onConnect, ag
           and never leaves your own smart account.
         </p>
         {installed === false ? (
-          <a className="cta" href={FREIGHTER_INSTALL_URL} target="_blank" rel="noreferrer">Install Freighter to begin ↗</a>
+          <a className="cta" href={VARIAL_INSTALL_URL} target="_blank" rel="noreferrer">Install Varial to begin ↗</a>
         ) : (
           <button className="cta" onClick={onConnect} disabled={connecting}>
-            {connecting ? "Connecting…" : "Connect Freighter to begin →"}
+            {connecting ? "Connecting…" : "Connect Varial to begin →"}
           </button>
         )}
         {error && <p className="err">{error}</p>}

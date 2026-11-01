@@ -12,14 +12,14 @@ const TITLES: Record<StepKey, string> = {
   register: "Activate",
 };
 const HINTS: Record<StepKey, string> = {
-  deploy: "your own OpenZeppelin account · Freighter",
-  authorize: "guarded pool access + USDC capped at 5,000 a day · Freighter",
+  deploy: "your own OpenZeppelin account · Varial",
+  authorize: "guarded pool access + USDC capped at 5,000 a day · Varial",
   fund: "straight into the account, none needed",
   register: "hand it to the agent loop",
 };
 const WORKING: Record<StepKey, string> = {
-  deploy: "confirm in Freighter…",
-  authorize: "confirm both rules in Freighter…",
+  deploy: "confirm in Varial…",
+  authorize: "confirm both rules in Varial…",
   fund: "minting test USDC…",
   register: "recording your account…",
 };
@@ -76,7 +76,7 @@ export default function SetupView({ onboarding, network }: { onboarding: Onboard
           <em>USDC</em>
         </label>
         <p className="hint">Up to 5,000 per request. On-chain, the agent can move at most 5,000 USDC a day from your account.</p>
-        {wrongNet && <p className="err">Freighter is on {networkLabel(network)}. Switch it to Testnet to continue.</p>}
+        {wrongNet && <p className="err">Varial is on {networkLabel(network)}. Switch it to Testnet to continue.</p>}
         {!valid && amount !== "" && <p className="err">Enter an amount between 1 and 5,000 USDC.</p>}
         {onboarding.error && <p className="err">{onboarding.error}</p>}
         <button className="cta" disabled={onboarding.running || !valid || wrongNet} onClick={() => void onboarding.start(n)}>
@@ -85,8 +85,8 @@ export default function SetupView({ onboarding, network }: { onboarding: Onboard
         <details className="fine">
           <summary>How signing works</summary>
           <p>
-            Your Freighter account owns the smart account, so only you can change its rules or move funds out. Step I
-            deploys it and step II adds the agent&rsquo;s two guarded rules: three Freighter prompts in all. The guard
+            Your Varial account owns the smart account, so only you can change its rules or move funds out. Step I
+            deploys it and step II adds the agent&rsquo;s two guarded rules: three Varial prompts in all. The guard
             keeps every pool call inside your own account and lets USDC go only to the pool. Step III mints our own
             testnet USDC, so you never need to source any.
           </p>
