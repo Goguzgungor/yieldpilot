@@ -1,0 +1,22 @@
+[package]
+name = "vigil-guard"
+description = "Vigil RiskGate: an OpenZeppelin smart-account policy that pins a Blend agent to self-directed supply/withdraw and rated pools."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+doctest = false
+
+[dependencies]
+soroban-sdk = { workspace = true }
+stellar-accounts = { workspace = true }
+vigil-interface = { workspace = true }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
+vigil-registry = { workspace = true }
+ed25519-dalek = "2.1.1"
+sha2 = "0.10"

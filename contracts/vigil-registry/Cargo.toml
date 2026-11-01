@@ -1,0 +1,18 @@
+[package]
+name = "vigil-registry"
+description = "Vigil RiskRegistry: publishers sign pool risk ratings, consumers read an M-of-N median."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+doctest = false
+
+[dependencies]
+soroban-sdk = { workspace = true }
+vigil-interface = { workspace = true }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
