@@ -36,9 +36,14 @@ export interface PoolRating {
   poolId: string;
   name: string;
   protocol: string;
-  /** 0..100, higher = safer. */
-  score: number;
-  grade: "A" | "B" | "C" | "D" | "E";
+  /** 0..100, higher = safer. null when not rated (grade "NR"). */
+  score: number | null;
+  /** "NR": never launched, or too little supplied to measure; nothing is published on-chain for it. */
+  grade: "A" | "B" | "C" | "D" | "E" | "NR";
+  /** Why the pool is not rated, when grade is "NR". */
+  notRated?: string;
+  /** Blend deployment the pool belongs to ("v2" or "v2.1"). */
+  deployment?: string;
   status: number | null;
   eligibleForDeposit: boolean;
   factors: RatingFactor[];

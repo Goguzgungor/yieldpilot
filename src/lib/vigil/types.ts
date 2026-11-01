@@ -119,6 +119,10 @@ export interface PoolSnapshot {
   oracleKind: "blend_aggregator" | "aggregator_compatible" | "direct_feed" | "opaque";
   backstopRate: number; // 0..1
   reserves: ReserveSnapshot[];
+  /** The backstop contract named in the pool's own config (Blend V2 and v2.1 each have one). */
+  backstopId?: string;
+  /** Which Blend deployment the pool belongs to, e.g. "v2" or "v2.1" (matched by backstop). */
+  deployment?: string;
   backstop: BackstopSnapshot | null;
   /** SDEX depth, only fetched for SDEX-priced collateral assets (keyed by assetId). */
   dexDepth: Record<string, DexDepth>;
@@ -143,6 +147,8 @@ export interface RatingFactor {
 }
 
 export type Grade = "A" | "B" | "C" | "D" | "E";
+/** A rating's grade: a letter, or NR when the pool has too little in it to grade. */
+export type RatingGrade = Grade | "NR";
 
 export type LeverKey = "backstop" | "oracle" | "caps" | "fresh";
 
@@ -183,11 +189,15 @@ export interface PoolRating {
   poolId: string;
   name: string;
   protocol: "blend" | "defindex";
-  /** 0..100, HIGHER = SAFER. */
-  score: number;
-  /** Weighted factor score before hard-rule caps (same scale). */
+  /** 0..100, HIGHER = SAFER. null when not rated (grade NR). */
+  score: number | null;
+  /** Weighted factor score before hard-rule caps (same scale). Absent when not rated. */
   uncappedScore?: number;
-  grade: Grade;
+  grade: RatingGrade;
+  /** Why the pool is not rated (grade NR): never launched, or too little supplied to measure. */
+  notRated?: string;
+  /** Blend deployment ("v2", "v2.1"); DeFindex: the underlying pool's. */
+  deployment?: string;
   /** Blend pool status code (0..6). For DeFindex: worst status of the underlying pools. */
   status: number;
   statusLabel: string;

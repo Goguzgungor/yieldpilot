@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 /**
- * GET /api/ratings — Vigil risk ratings for every Blend V2 pool and configured
+ * GET /api/ratings — Vigil risk ratings for every Blend pool (V2 and v2.1) and configured
  * DeFindex strategy (mainnet, read-only), cached for an hour.
  *
  *   ?refresh=1  recompute now (only if the cache is older than 5 minutes)

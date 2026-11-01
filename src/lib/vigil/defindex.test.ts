@@ -60,7 +60,7 @@ describe("rateDefindexVault", () => {
     const s1 = rateDefindexStrategy(strat(), ratings, snaps);
     const s2 = rateDefindexStrategy(strat({ strategyId: cid("s2"), blendPoolId: bad.poolId }), ratings, snaps);
     const v = rateDefindexVault({ vaultId: cid("vault"), name: "Vault" }, [s1, s2]);
-    expect(v.score).toBe(Math.min(s1.score, s2.score));
+    expect(v.score).toBe(Math.min(s1.score!, s2.score!));
     expect(v.eligibleForDeposit).toBe(false);
     expect(v.underlying).toEqual([s1.poolId, s2.poolId]);
     expect(rateDefindexVault({ vaultId: cid("v2"), name: "Empty" }, []).grade).toBe("E");

@@ -8,8 +8,8 @@ import { backstop, cid, healthyPool, reserve, src } from "./testkit";
 const uninsured = backstop({ usdc: 0, blnd: 0, meetsThreshold: false });
 
 describe("v2.1 scoring", () => {
-  it("is versioned and weights still sum to 1, with no pool_status factor", () => {
-    expect(ENGINE_VERSION).toBe("vigil-risk-v2.1.0");
+  it("weights still sum to 1, with no pool_status factor", () => {
+    expect(ENGINE_VERSION).toMatch(/^vigil-risk-v2\.[12]\./);
     expect("pool_status" in WEIGHTS).toBe(false);
     expect(Object.values(WEIGHTS).reduce((a, b) => a + b, 0)).toBeCloseTo(1, 10);
   });
@@ -30,8 +30,8 @@ describe("v2.1 scoring", () => {
     expect(r.grade).toBe("B");
   });
 
-  it("frozen and never-launched pools are graded on their merits but marked as not accepting deposits", () => {
-    for (const status of [4, 5, 6]) {
+  it("frozen pools are graded on their merits but marked as not accepting deposits", () => {
+    for (const status of [4, 5]) {
       const r = ratePool(healthyPool({ poolId: cid(`closed${status}`), status }));
       expect(r.grade).toBe("A"); // insured, robust prices: the setup itself is sound
       expect(r.eligibleForDeposit).toBe(false);
@@ -52,7 +52,7 @@ describe("v2.1 scoring", () => {
         ],
       }),
     );
-    expect(good.score).toBeGreaterThan(weak.score);
+    expect(good.score!).toBeGreaterThan(weak.score!);
   });
 
   it("the uninsured / weak-feed ceiling is soft: it squeezes B..A into B instead of flattening everyone to 79", () => {
@@ -71,7 +71,7 @@ describe("v2.1 scoring", () => {
     expect(strong.grade).toBe("B");
     expect(weaker.grade).toBe("B");
     expect(strong.score).toBeLessThanOrEqual(79);
-    expect(strong.score).toBeGreaterThan(weaker.score); // order survives the ceiling
+    expect(strong.score!).toBeGreaterThan(weaker.score!); // order survives the ceiling
     expect(strong.uncappedScore! - weaker.uncappedScore!).toBeGreaterThan(0);
   });
 

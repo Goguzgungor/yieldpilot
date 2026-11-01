@@ -27,7 +27,8 @@ const server = new rpc.Server(RPC);
 interface Rated {
   poolId: string;
   name: string;
-  score: number;
+  /** null for NR (not rated): nothing is published, so the guard refuses deposits. */
+  score: number | null;
   grade: string;
   reasonsHash: string;
 }
@@ -57,7 +58,9 @@ async function main() {
 
   // The registry rejects timestamps in the future and older than its max age;
   // the engine's computedAt is mainnet chain time, which is what we sign.
-  const inputs: RatingInput[] = ratings.map((r) => ({
+  const rated = ratings.filter((r): r is Rated & { score: number } => r.score !== null);
+  if (rated.length < ratings.length) console.log(`skipping ${ratings.length - rated.length} not-rated (NR) pools`);
+  const inputs: RatingInput[] = rated.map((r) => ({
     pool: r.poolId,
     score: r.score,
     timestamp: BigInt(computedAt),
@@ -84,7 +87,7 @@ async function main() {
   for (const r of ratings) {
     const agg = await client.getRating(r.poolId);
     console.log(
-      `  ${r.name.slice(0, 24).padEnd(24)} ${r.poolId.slice(0, 6)}…  engine ${String(r.score).padStart(3)} ${r.grade}  →  registry ${agg ? `${agg.score} (${agg.publishers} publisher)` : "none"}`,
+      `  ${r.name.slice(0, 24).padEnd(24)} ${r.poolId.slice(0, 6)}…  engine ${String(r.score ?? "NR").padStart(3)} ${r.grade}  →  registry ${agg ? `${agg.score} (${agg.publishers} publisher)` : "none"}`,
     );
   }
 }

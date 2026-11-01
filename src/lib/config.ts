@@ -24,6 +24,11 @@ const Schema = z.object({
   // mainnet.contracts.json (poolFactoryV2 / backstopV2).
   SCAN_POOL_FACTORY_ID: z.string().min(1).default("CDSYOAVXFY7SM5S64IZPPPYB4GVGGLMQVFREPSQQEZVIWXX5R23G4QSU"),
   SCAN_BACKSTOP_ID: z.string().min(1).default("CAQQR5SWBXKIGZKPBZDH3KM5GQ5GUTPKB7JAFCINLZBC5WXPJKRG3IM7"),
+  // Blend v2.1 (same pool code, its own backstop and factory; live since
+  // 2026-09-30, blend-ui PR #238). The factory is the backstop's `PoolFact`.
+  // Read by the Vigil ratings only; the agent's scan still covers V2.
+  SCAN_POOL_FACTORY_V2_1_ID: z.string().min(1).default("CACUXRNBUFV7BFPKUDLVJFQI6H7EHHNSJPOFJSCWJCYUUYMORM6C63AL"),
+  SCAN_BACKSTOP_V2_1_ID: z.string().min(1).default("CCS4AZ5ORM6VLLPJTJUFRNXWBMHOO3L5WHHRPL2ZMILE35ZDMQFHOQMJ"),
   // DeFindex (mainnet, scan-only). JSON array; empty/omitted => disabled.
   SCAN_DEFINDEX_STRATEGIES: z.string().default("[]"),
 
@@ -130,6 +135,10 @@ export function parseConfig(env: Record<string, string | undefined>) {
     scanUsdcContractId: e.SCAN_USDC_CONTRACT_ID,
     scanPoolFactoryId: e.SCAN_POOL_FACTORY_ID,
     scanBackstopId: e.SCAN_BACKSTOP_ID,
+    scanBlendDeployments: [
+      { name: "v2", factoryId: e.SCAN_POOL_FACTORY_ID, backstopId: e.SCAN_BACKSTOP_ID },
+      { name: "v2.1", factoryId: e.SCAN_POOL_FACTORY_V2_1_ID, backstopId: e.SCAN_BACKSTOP_V2_1_ID },
+    ],
     scanDefindexStrategies: defindexStrategies,
     // Exec (testnet)
     execRpcUrl: e.EXEC_RPC_URL,

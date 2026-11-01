@@ -1,5 +1,5 @@
 /**
- * Vigil risk engine v2 — pool scoring (pure, deterministic).
+ * Vigil risk engine — pool scoring (pure, deterministic). Version history: docs/vigil/methodology.md.
  *
  * score: 0..100, HIGHER = SAFER. Weighted sum of factor sub-scores (each 0..100), then hard
  * rules cap the score and/or block deposit eligibility. All weights live in {@link WEIGHTS};
@@ -11,6 +11,7 @@ import {
   SDEX_PRICED_KINDS,
   type Grade,
   type OracleSourceKind,
+  type RatingGrade,
   type PoolRating,
   type PoolSnapshot,
   type RatingFactor,
@@ -18,7 +19,7 @@ import {
   type ReserveYield,
 } from "./types";
 
-export const ENGINE_VERSION = "vigil-risk-v2.1.0";
+export const ENGINE_VERSION = "vigil-risk-v2.2.0";
 
 /**
  * Factor weights (sum = 1). v2.1 dropped the pool_status factor: Blend's
@@ -91,7 +92,7 @@ export const GRADE_BANDS: ReadonlyArray<readonly [number, Grade]> = [
 ];
 
 export const HARD_CAPS = {
-  /** backstop below Blend's threshold (no first-loss capital) ⇒ grade ≤ B */
+  /** backstop below Blend's threshold, or ≥30% of it queued to leave ⇒ grade ≤ B */
   uninsured: 79,
   /** collateral with stale/missing price ⇒ grade ≤ D */
   collateralPriceUnavailable: 49,
@@ -114,12 +115,24 @@ export const THRESHOLDS = {
   utilizationZero: 0.95,
   /** Effective backstop / liabilities giving full marks. */
   backstopFullCoverage: 0.1,
+  /**
+   * Share of the backstop queued for withdrawal at which Blend's update_status
+   * puts an Active pool On_Ice (pool/src/pool/status.rs). Past it the backstop
+   * is leaving, so it is not counted as reliable first-loss capital (HR7).
+   */
+  backstopQueueOnIce: 0.3,
   /** sourceQuality at or above this is a robust price source (RedStone = 85, Reflector CEX/FX = 95). */
   robustSourceQuality: 85,
   /** Below this many USD of liabilities the pool has nothing at risk. */
   minLiabilitiesUsd: 1_000,
   /** Below this much borrowable liquidity there is nothing to drain. */
   minLiquidityUsd: 1_000,
+  /**
+   * Below this much supplied (USD) a pool is not rated (NR): its utilization,
+   * backstop cover and manipulation economics are set by a few dust positions,
+   * and a high score would only say that nothing is there.
+   */
+  minRatedTvlUsd: 10_000,
   /** Comet backstop token is 80/20 BLND/USDC ⇒ spot value = 5 × USDC (backstop/src/backstop/pool.rs). */
   cometUsdcMultiplier: 5,
 } as const;
@@ -212,21 +225,23 @@ export function priceProblem(r: ReserveSnapshot, nowSec: number): "missing" | "s
   return age > staleAfterSec(r) ? "stale" : null;
 }
 
-export function oracleFreshnessFactor(d: Derived[], nowSec: number): FactorCalc & { collateralProblems: string[] } {
-  const collateralProblems: string[] = [];
-  const otherProblems: string[] = [];
+/**
+ * A stale or missing price on collateral, or on an asset someone has borrowed,
+ * blocks Blend's health check: the positions holding it can be neither
+ * liquidated nor valued, and an unpriced debt also counts as $0 in every USD
+ * total (liabilities, utilization), which would make the pool look safer.
+ */
+export function oracleFreshnessFactor(d: Derived[], nowSec: number): FactorCalc & { priceProblems: string[] } {
+  const priceProblems: string[] = [];
   for (const x of d) {
     if (!x.isCollateral && x.r.borrowed <= 0) continue;
     const p = priceProblem(x.r, nowSec);
     if (!p) continue;
     const age = x.r.priceTimestamp !== null ? ` (age ${Math.max(0, nowSec - x.r.priceTimestamp)}s)` : "";
-    (x.isCollateral ? collateralProblems : otherProblems).push(`${x.r.symbol}: ${p}${age}`);
+    priceProblems.push(`${x.r.symbol}${x.isCollateral ? "" : " (borrowed)"}: ${p}${age}`);
   }
-  if (collateralProblems.length)
-    return { value: 0, raw: collateralProblems.length, note: `collateral price ${collateralProblems.join("; ")}`, collateralProblems };
-  if (otherProblems.length)
-    return { value: 50, raw: otherProblems.length, note: `borrowed-asset price ${otherProblems.join("; ")}`, collateralProblems };
-  return { value: 100, raw: 0, note: "all collateral / borrowed-asset prices fresh", collateralProblems };
+  if (priceProblems.length) return { value: 0, raw: priceProblems.length, note: `price ${priceProblems.join("; ")}`, priceProblems };
+  return { value: 100, raw: 0, note: "all collateral / borrowed-asset prices fresh", priceProblems };
 }
 
 export function rhoToScore(rho: number | null, lowerBound: boolean): number {
@@ -319,24 +334,30 @@ export function backstopFactor(s: PoolSnapshot, d: Derived[]): FactorCalc {
   };
 }
 
+/**
+ * Scored on the most-borrowed reserve with material supply, not the pool-wide
+ * USD average: a depositor supplies one asset, and a pool's idle XLM does not
+ * make its USDC withdrawable.
+ */
 export function utilizationFactor(d: Derived[]): FactorCalc {
   const sup = d.reduce((a, x) => a + x.suppliedUsd, 0);
   const bor = d.reduce((a, x) => a + x.borrowedUsd, 0);
   if (sup <= 0) return { value: 100, raw: 0, note: "no supply" };
-  const u = bor / sup;
+  const pool = bor / sup;
   let maxU = 0;
   let maxSym = "";
   for (const x of d) {
-    if (x.suppliedUsd < 1) continue;
+    if (x.suppliedUsd < THRESHOLDS.minLiquidityUsd) continue;
     const ru = x.r.supplied > 0 ? x.r.borrowed / x.r.supplied : 0;
     if (ru > maxU) {
       maxU = ru;
       maxSym = x.r.symbol;
     }
   }
+  if (!maxSym) return { value: 100, raw: 0, note: `no reserve with ${fmtUsd(THRESHOLDS.minLiquidityUsd)}+ supplied (pool utilization ${pct(pool)})` };
   const { utilizationFull: lo, utilizationZero: hi } = THRESHOLDS;
-  const value = u <= lo ? 100 : u >= hi ? 0 : (100 * (hi - u)) / (hi - lo);
-  return { value, raw: u, note: `pool utilization ${pct(u)} (highest reserve ${maxSym || "-"} ${pct(maxU)})` };
+  const value = maxU <= lo ? 100 : maxU >= hi ? 0 : (100 * (hi - maxU)) / (hi - lo);
+  return { value, raw: maxU, note: `most-borrowed reserve ${maxSym} ${pct(maxU)} (pool-wide ${pct(pool)})` };
 }
 
 /**
@@ -404,6 +425,20 @@ export function weakCollateral(d: Derived[], manip: ManipulationAssessment[]): D
   return d.filter((x) => x.isCollateral && x.priced && sourceQuality(x.r) < THRESHOLDS.robustSourceQuality && !depthVerified.has(x.r.assetId));
 }
 
+/**
+ * Why the backstop does not count as first-loss capital (HR7), or null when it
+ * does: below Blend's threshold, or so much of it queued to leave that Blend's
+ * own update_status would put the pool On_Ice.
+ */
+export function backstopUnreliable(s: PoolSnapshot): string | null {
+  const b = s.backstop;
+  if (!b) return "backstop data unavailable (treated as uninsured)";
+  if (!b.meetsThreshold) return "backstop below Blend's threshold: no first-loss capital (uninsured)";
+  if (b.q4wPct >= THRESHOLDS.backstopQueueOnIce)
+    return `${pct(b.q4wPct)} of the backstop is queued for withdrawal, at or past the ${pct(THRESHOLDS.backstopQueueOnIce)} at which Blend puts a pool On_Ice`;
+  return null;
+}
+
 export function ratePool(s: PoolSnapshot, opts: RateOptions = {}): PoolRating {
   const nowSec = s.asOf.timestamp;
   const d = derive(s);
@@ -431,10 +466,10 @@ export function ratePool(s: PoolSnapshot, opts: RateOptions = {}): PoolRating {
     eligible = false;
     hardRules.push(`HR1 status ${s.status} (${STATUS_LABELS[s.status] ?? "unknown"}): Blend does not accept deposits ⇒ not eligible`);
   }
-  if (fresh.collateralProblems.length) {
+  if (fresh.priceProblems.length) {
     eligible = false;
     score = Math.min(score, HARD_CAPS.collateralPriceUnavailable);
-    hardRules.push(`HR2 collateral price unavailable (${fresh.collateralProblems.join("; ")}) ⇒ not eligible, grade ≤ D`);
+    hardRules.push(`HR2 price unavailable for collateral or a borrowed asset (${fresh.priceProblems.join("; ")}) ⇒ not eligible, grade ≤ D`);
   }
   const manipulable = manip.filter((m) => m.result?.profitable && !m.result.costIsLowerBound);
   if (manipulable.length) {
@@ -449,11 +484,11 @@ export function ratePool(s: PoolSnapshot, opts: RateOptions = {}): PoolRating {
     hardRules.push(`HR5 collateral price source unidentifiable (${opaque.map((x) => x.r.symbol).join(", ")}) ⇒ not eligible, grade ≤ C`);
   }
   // HR6 / HR7 share one soft ceiling, applied once even when both hold.
-  const uninsured = !s.backstop || !s.backstop.meetsThreshold;
+  const uninsured = backstopUnreliable(s);
   const weakColl = weakCollateral(d, manip);
   if ((uninsured || weakColl.length) && score > B_FLOOR) {
     score = softCeiling(score);
-    if (uninsured) hardRules.push("HR7 backstop below Blend's threshold: no first-loss capital (uninsured) ⇒ at most B (65+ compressed into 65–79)");
+    if (uninsured) hardRules.push(`HR7 ${uninsured} ⇒ at most B (65+ compressed into 65–79)`);
     if (weakColl.length) {
       hardRules.push(
         `HR6 collateral priced by a weak source (${weakColl.map((x) => `${x.r.symbol} ← ${x.r.source.kind}`).join(", ")}) ⇒ at most B (65+ compressed into 65–79)`,
@@ -465,21 +500,38 @@ export function ratePool(s: PoolSnapshot, opts: RateOptions = {}): PoolRating {
     eligible = false;
     hardRules.push("HR4 score < 50 ⇒ not eligible");
   }
-  const grade = gradeFor(score);
+
+  const tvlUsd = Math.round(d.reduce((a, x) => a + x.suppliedUsd, 0) * 100) / 100;
+  // NR: nothing to grade. A pool that never launched, or one holding less than
+  // minRatedTvlUsd, gets no score, so it can never rank above a real market;
+  // with no rating the guard refuses deposits, as for any unrated pool.
+  const notRated =
+    s.status === 6
+      ? "never launched (Blend status 6, Setup)"
+      : tvlUsd < THRESHOLDS.minRatedTvlUsd
+        ? `${fmtUsd(tvlUsd)} supplied, under the ${fmtUsd(THRESHOLDS.minRatedTvlUsd)} needed to measure a market`
+        : undefined;
+  if (notRated) {
+    eligible = false;
+    // Ceilings and the score floor (HR4, HR6, HR7) shape a score; with no score they say nothing.
+    for (let i = hardRules.length - 1; i >= 0; i--) if (/^HR[467] /.test(hardRules[i])) hardRules.splice(i, 1);
+    hardRules.unshift(`NR not rated: ${notRated} ⇒ no grade, not eligible`);
+  }
+  const finalScore: number | null = notRated ? null : score;
+  const grade: RatingGrade = notRated ? "NR" : gradeFor(score);
 
   const reasons: string[] = [...hardRules];
   for (const m of manip) if (m.score < 50) reasons.push(`sdex_manipulation: ${m.note}`);
   for (const f of factors) if (f.value < 50 && f.key !== "sdex_manipulation") reasons.push(`${f.key}: ${f.note}`);
   for (const g of s.dataGaps) reasons.push(`data gap: ${g}`);
 
-  const tvlUsd = Math.round(d.reduce((a, x) => a + x.suppliedUsd, 0) * 100) / 100;
   const reasonsHash = sha256Canonical({
     engineVersion: ENGINE_VERSION,
     inputs: hashInputs(s),
     factors,
     hardRules,
-    score,
-    uncappedScore,
+    score: finalScore,
+    uncappedScore: notRated ? null : uncappedScore,
     grade,
     eligibleForDeposit: eligible,
   });
@@ -488,9 +540,10 @@ export function ratePool(s: PoolSnapshot, opts: RateOptions = {}): PoolRating {
     poolId: s.poolId,
     name: s.name,
     protocol: "blend",
-    score,
-    uncappedScore,
+    score: finalScore,
+    ...(notRated ? { notRated } : { uncappedScore }),
     grade,
+    ...(s.deployment ? { deployment: s.deployment } : {}),
     status: s.status,
     statusLabel: STATUS_LABELS[s.status] ?? `unknown(${s.status})`,
     eligibleForDeposit: eligible,
@@ -527,6 +580,7 @@ export function hashInputs(s: PoolSnapshot): unknown {
     oracleId: s.oracleId,
     oracleKind: s.oracleKind,
     asOf: s.asOf,
+    ...(s.backstopId ? { backstopId: s.backstopId } : {}),
     backstop: s.backstop,
     reserves: s.reserves.map((r) => ({
       assetId: r.assetId,

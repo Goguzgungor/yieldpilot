@@ -667,7 +667,7 @@ export interface CachedRatings {
 }
 
 /**
- * Vigil ratings for every Blend V2 pool + configured DeFindex strategy, from a
+ * Vigil ratings for every Blend pool (V2 and v2.1) + configured DeFindex strategy, from a
  * live mainnet read. A full run takes ~90 s, so the result lives in the DB KV
  * (shared across serverless instances) for {@link RATINGS_TTL_MS}; concurrent
  * misses in one instance share a single run. `refresh` forces a recompute.
@@ -693,8 +693,7 @@ export async function getRatings(opts: { refresh?: boolean } = {}): Promise<Cach
   ratingsInFlight ??= computeLiveRatings({
     rpcUrl: rt.cfg.scanRpcUrl,
     passphrase: rt.cfg.scanNetworkPassphrase,
-    factoryId: rt.cfg.scanPoolFactoryId,
-    backstopId: rt.cfg.scanBackstopId,
+    deployments: rt.cfg.scanBlendDeployments,
     curatedPoolIds: rt.cfg.scanBlendPoolIds,
     defindexStrategies: rt.cfg.scanDefindexStrategies.map((s) => ({
       strategyId: s.strategyId,

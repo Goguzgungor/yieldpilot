@@ -1,5 +1,5 @@
 /**
- * Full Blend V2 pool enumeration.
+ * Full Blend pool enumeration, per deployment (V2 and v2.1 each have a factory).
  *
  * Why not the existing discovery (src/lib/discovery.ts)? It relies on the backstop reward zone
  * (currently EMPTY on mainnet — `reward_zone()` returns []) plus RPC `getEvents`, whose retention

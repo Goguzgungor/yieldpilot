@@ -41,7 +41,7 @@ The user signs every owner action in Freighter: deploying the wallet and adding 
 | Legacy (backend-owned) wallets can be guarded and handed to their users | `scripts/migrate-legacy-accounts.ts`, `/api/onboard/prepare` step `finalize-ownership` |
 | Mainnet ratings can be published to the registry and read back on-chain | `scripts/vigil-publish.ts` |
 
-Live ratings for every Blend V2 pool are served at `/ratings` (page) and `/api/ratings` (JSON, cached hourly). The engine also reconstructs the YieldBlox pool as configured before the 22 Feb 2026 exploit and grades it E (`npx tsx scripts/vigil-backtest.ts`).
+Live ratings for every Blend pool (the V2 and v2.1 deployments) are served at `/ratings` (page) and `/api/ratings` (JSON, cached hourly). The engine also reconstructs the YieldBlox pool as configured before the 22 Feb 2026 exploit and grades it E (`npx tsx scripts/vigil-backtest.ts`).
 
 ## Testnet contracts
 
@@ -74,7 +74,7 @@ Copy `.env.example` to `.env`. `CLAUDE.md` describes the architecture: the scan/
 | Path | What |
 |---|---|
 | `src/lib/` | agent loop: scanner, DeFindex, risk, deterministic pool choice, per-user executor, smart-account auth |
-| `src/lib/vigil/` | Vigil risk engine v2 |
+| `src/lib/vigil/` | Vigil risk engine (v2.2; history in `docs/vigil/methodology.md` §10) |
 | `src/app/` | Next.js UI + API routes (`/api/onboard/*`, `/api/scan`, `/api/ratings`, …) |
 | `contracts/` | `vigil-guard`, `vigil-registry`, shared `vigil-interface` (Rust, soroban-sdk 28, OZ stellar-accounts 0.8) |
 | `packages/vigil-sdk/` | TypeScript client |

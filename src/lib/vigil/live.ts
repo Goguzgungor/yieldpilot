@@ -13,12 +13,20 @@ import { SDEX_PRICED_KINDS } from "./types";
 import { THRESHOLDS } from "./score";
 import type { PoolVerifier } from "./discovery";
 
+/** One Blend deployment: a pool factory and the backstop its pools insure into. */
+export interface BlendDeployment {
+  /** Label shown on ratings, e.g. "v2" or "v2.1". */
+  name: string;
+  factoryId: string;
+  backstopId: string;
+}
+
 export interface LiveConfig {
   rpcUrl: string;
   passphrase: string;
   horizonUrl?: string;
-  backstopId: string;
-  factoryId: string;
+  /** Blend V2 runs two deployments on mainnet (V2, and v2.1 since 2026-09-30); every one is read. */
+  deployments: BlendDeployment[];
   /** Delay between RPC calls (ms) to stay polite with public RPC. */
   callDelayMs?: number;
   fetchImpl?: typeof fetch;
@@ -214,9 +222,9 @@ export function createLiveReaders(cfg: LiveConfig) {
     }
   }
 
-  async function backstopData(poolId: string): Promise<BackstopSnapshot | null> {
+  async function backstopData(backstopId: string, poolId: string): Promise<BackstopSnapshot | null> {
     try {
-      const v = (await sim(cfg.backstopId, "pool_data", new Address(poolId).toScVal())) as {
+      const v = (await sim(backstopId, "pool_data", new Address(poolId).toScVal())) as {
         tokens: bigint;
         shares: bigint;
         q4w_pct: bigint;
@@ -353,8 +361,11 @@ export function createLiveReaders(cfg: LiveConfig) {
       else dataGaps.push(`SDEX order book unavailable for ${r.symbol}`);
     }
 
-    const backstop = await backstopData(poolId);
-    if (!backstop) dataGaps.push("backstop pool_data unreadable");
+    // The backstop named in the pool's own config: V2 and v2.1 pools insure into different ones.
+    const backstop = await backstopData(m.backstop, poolId);
+    if (!backstop) dataGaps.push(`backstop pool_data unreadable on ${m.backstop}`);
+    const deployment = cfg.deployments.find((x) => x.backstopId === m.backstop)?.name;
+    if (!deployment) dataGaps.push(`pool's backstop ${m.backstop} is not a known Blend deployment`);
 
     return {
       poolId,
@@ -366,6 +377,8 @@ export function createLiveReaders(cfg: LiveConfig) {
       oracleKind,
       backstopRate: m.backstopRate / 1e7,
       reserves: out,
+      backstopId: m.backstop,
+      ...(deployment ? { deployment } : {}),
       backstop,
       dexDepth,
       asOf,
@@ -374,21 +387,28 @@ export function createLiveReaders(cfg: LiveConfig) {
     };
   }
 
-  /** Factory `is_pool(address)` — the factory's own record of pools it deployed. */
+  /**
+   * Factory `is_pool(address)` — the factory's own record of pools it deployed. True if any
+   * deployment's factory deployed it, false if every factory answered no, null if one could not
+   * be asked and none said yes.
+   */
   const verifier: PoolVerifier = {
     async isPool(poolId: string) {
-      try {
-        const v = await sim(cfg.factoryId, "is_pool", new Address(poolId).toScVal());
-        return v === true;
-      } catch {
-        return null;
+      let unknown = false;
+      for (const dep of cfg.deployments) {
+        try {
+          if ((await sim(dep.factoryId, "is_pool", new Address(poolId).toScVal())) === true) return true;
+        } catch {
+          unknown = true;
+        }
       }
+      return unknown ? null : false;
     },
   };
 
-  /** Backstop reward zone (currently empty on mainnet; kept as a discovery source). */
-  async function rewardZone(): Promise<string[]> {
-    const v = await sim(cfg.backstopId, "reward_zone");
+  /** A backstop's reward zone (the V2 one is empty on mainnet; kept as a discovery source). */
+  async function rewardZone(backstopId: string): Promise<string[]> {
+    const v = await sim(backstopId, "reward_zone");
     return Array.isArray(v) ? (v as string[]) : [];
   }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { RECONSTRUCTED_USTRY_ASKS, YIELDBLOX_POOL, runYieldBloxBacktest, yieldBloxReconstruction } from "./backtest";
-import { ratePool } from "./score";
+import { HARD_CAPS, ratePool } from "./score";
 
 describe("YieldBlox backtest (RECONSTRUCTION of 2026-02-22T00:00Z)", () => {
   const bt = runYieldBloxBacktest();
@@ -27,8 +27,11 @@ describe("YieldBlox backtest (RECONSTRUCTION of 2026-02-22T00:00Z)", () => {
     expect(bt.ustry.extractableUsd).toBeLessThan(bt.actualExtractedUsd * 1.5);
   });
 
-  it("without the hard rule the same pool would have looked investable (C or better)", () => {
-    expect(bt.rating.uncappedScore!).toBeGreaterThanOrEqual(50);
+  it("the SDEX rule is what makes it E: without it the pool scores D, one point under the deposit line", () => {
+    // v2.2 scores utilization on the most-borrowed reserve (USDC was 80% borrowed),
+    // which alone takes it to 49; v2.1's pool-wide average gave 56 (C).
+    expect(bt.rating.uncappedScore!).toBeGreaterThan(HARD_CAPS.sdexManipulable);
+    expect(bt.rating.uncappedScore!).toBe(49);
   });
 
   it("rho rises monotonically with ask depth; the flag clears only at ~$26M of asks", () => {

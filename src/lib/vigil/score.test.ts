@@ -42,18 +42,25 @@ describe("healthy baseline", () => {
   });
 });
 
-describe("pool status (HR1, v2.1)", () => {
+describe("pool status (HR1, v2.1; NR for Setup since v2.2)", () => {
   it.each([2, 3])("status %i (borrowing paused) still accepts deposits and is not graded down by status", (status) => {
     const r = ratePool(healthyPool({ status }));
     expect(r.eligibleForDeposit).toBe(true);
     expect(r.grade).toBe("A");
     expect(r.hardRules.some((h) => h.startsWith("HR1"))).toBe(false);
   });
-  it.each([4, 5, 6])("status %i ⇒ Blend refuses deposits: not eligible, grade unchanged", (status) => {
+  it.each([4, 5])("status %i ⇒ Blend refuses deposits: not eligible, grade unchanged", (status) => {
     const r = ratePool(healthyPool({ status }));
     expect(r.eligibleForDeposit).toBe(false);
     expect(r.grade).toBe("A");
     expect(r.hardRules[0]).toMatch(/^HR1/);
+  });
+  it("status 6 (never launched) ⇒ not rated", () => {
+    const r = ratePool(healthyPool({ status: 6 }));
+    expect(r.grade).toBe("NR");
+    expect(r.score).toBeNull();
+    expect(r.eligibleForDeposit).toBe(false);
+    expect(r.hardRules.some((h) => h.startsWith("HR1"))).toBe(true);
   });
 });
 
@@ -99,13 +106,20 @@ describe("oracle_freshness factor + HR2", () => {
     s.reserves[2] = reserve("EURC", { priceUsd: null, priceTimestamp: null, source: src("missing") });
     expect(ratePool(s).hardRules.some((h) => h.startsWith("HR2"))).toBe(true);
   });
-  it("a missing price on a non-collateral borrowed asset only halves the factor (no hard rule)", () => {
+  it("a missing price on a borrowed (non-collateral) asset ⇒ HR2 too: that debt can be neither valued nor liquidated", () => {
     const s = healthyPool();
     s.reserves.push(reserve("BOR", { cFactor: 0, borrowed: 10, priceUsd: null, priceTimestamp: null, source: src("missing") }));
     const f = oracleFreshnessFactor(derive(s), T0);
-    expect(f.value).toBe(50);
-    expect(f.collateralProblems).toEqual([]);
-    expect(ratePool(s).hardRules.some((h) => h.startsWith("HR2"))).toBe(false);
+    expect(f.value).toBe(0);
+    expect(f.priceProblems).toEqual(["BOR (borrowed): missing"]);
+    const r = ratePool(s);
+    expect(r.hardRules.some((h) => h.startsWith("HR2") && h.includes("BOR (borrowed)"))).toBe(true);
+    expect(r.eligibleForDeposit).toBe(false);
+  });
+  it("a borrowable asset nobody has borrowed is not a price problem (a new borrow would just revert)", () => {
+    const s = healthyPool();
+    s.reserves.push(reserve("IDLE", { cFactor: 0, borrowed: 0, priceUsd: null, priceTimestamp: null, source: src("missing") }));
+    expect(oracleFreshnessFactor(derive(s), T0).priceProblems).toEqual([]);
   });
 });
 
@@ -197,7 +211,7 @@ describe("backstop_coverage factor", () => {
 
 describe("utilization factor", () => {
   it("100 up to 60%, 0 from 95%, linear in between", () => {
-    const at = (u: number) => utilizationFactor(derive(healthyPool({ reserves: [reserve("USDC", { supplied: 100, borrowed: 100 * u })] }))).value;
+    const at = (u: number) => utilizationFactor(derive(healthyPool({ reserves: [reserve("USDC", { supplied: 100_000, borrowed: 100_000 * u })] }))).value;
     expect(at(0.5)).toBe(100);
     expect(at(0.6)).toBe(100);
     expect(at(0.775)).toBeCloseTo(50, 6);
@@ -257,7 +271,6 @@ describe("HR4 / HR5", () => {
     const dex = reserve("DEX", { supplyCap: null, source: src("reflector_dex", { maxDevPct: 10 }) });
     s.reserves.push(dex);
     s.dexDepth[dex.assetId] = depth(dex.assetId, [[1.01, 1]], true); // uncertain ⇒ 50
-    s.reserves.push(reserve("BOR", { cFactor: 0, borrowed: 10, priceUsd: null, priceTimestamp: null, source: src("missing") }));
     const r = ratePool(s);
     expect(r.score).toBeLessThan(50);
     expect(r.hardRules).toEqual(["HR4 score < 50 ⇒ not eligible"]);

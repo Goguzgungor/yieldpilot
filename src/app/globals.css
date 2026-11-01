@@ -268,6 +268,10 @@ input { font: inherit; color: inherit; }
 .rt-g-A, .rt-g-B { color: var(--ink-hi); }
 .rt-g-C { color: var(--mut); }
 .rt-g-D, .rt-g-E { color: var(--err); }
+.rt-g-NR { color: var(--dim); }
+/* NR: no score, so no point on the track; the line is broken to say so */
+.rt-track--nr { height: 0; background: none; border-top: 1px dashed var(--faint); }
+.rt-nr-note { position: absolute; top: -5px; left: 0; padding-right: 8px; background: var(--night); font: 400 10.5px/1 var(--mono); color: var(--dim); }
 
 .rt-table { margin-top: 44px; border-top: 1px solid var(--hair); }
 .rt-row { display: grid; grid-template-columns: minmax(170px, 1.6fr) 0.9fr 0.45fr 0.6fr 0.7fr 0.7fr 0.8fr 2.2fr; gap: 12px; align-items: baseline;

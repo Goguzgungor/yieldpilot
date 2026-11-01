@@ -106,6 +106,8 @@ export function toRatingsJson(r: EngineResult) {
           oracleId: s.oracleId,
           oracleKind: s.oracleKind,
           asOf: s.asOf,
+          deployment: s.deployment,
+          backstopId: s.backstopId,
           backstop: s.backstop,
           dataGaps: s.dataGaps,
           reserves: s.reserves.map((x) => ({

@@ -54,22 +54,23 @@ export function rateDefindexStrategy(
 
   let score = pool.score;
   let eligible = pool.eligibleForDeposit;
+  const poolGrade = pool.grade === "NR" ? "NR (not rated)" : pool.grade;
   const snap = poolSnapshots[poolId];
   const assetId = input.onchainAssetId || input.assetContractId;
   const reserve = snap?.reserves.find((r) => r.assetId === assetId);
   const factors: RatingFactor[] = [
     {
       key: "underlying_pool",
-      value: pool.score,
+      value: pool.score ?? 0,
       weight: 1,
-      contribution: pool.score,
+      contribution: pool.score ?? 0,
       raw: pool.reasonsHash,
-      note: `worst-of underlying Blend pool ${pool.name} (${poolId.slice(0, 6)}…) grade ${pool.grade}`,
+      note: `worst-of underlying Blend pool ${pool.name} (${poolId.slice(0, 6)}…) grade ${poolGrade}`,
     },
   ];
   if (snap && (!reserve || !reserve.enabled)) {
     eligible = false;
-    score = Math.min(score, HARD_CAPS.sdexManipulable);
+    score = score === null ? null : Math.min(score, HARD_CAPS.sdexManipulable);
     hardRules.push(`HR-D2 strategy asset ${input.asset} is ${reserve ? "disabled" : "not a reserve"} in the underlying pool ⇒ not eligible`);
   }
   for (const h of pool.hardRules) hardRules.push(`underlying: ${h}`);
@@ -86,7 +87,14 @@ export function rateDefindexStrategy(
     [pool.reasonsHash],
   );
   const yields = snap ? reserveYields(snap).filter((y) => y.assetId === assetId) : [];
-  return { ...rating, uncappedScore: pool.uncappedScore, yields, paths: pool.paths };
+  return {
+    ...rating,
+    ...(pool.uncappedScore !== undefined ? { uncappedScore: pool.uncappedScore } : {}),
+    ...(pool.notRated ? { notRated: `underlying pool ${pool.name}: ${pool.notRated}` } : {}),
+    ...(pool.deployment ? { deployment: pool.deployment } : {}),
+    yields,
+    paths: pool.paths,
+  };
 }
 
 /** Rate a vault spreading over several strategies: worst-of its strategy ratings. */
@@ -100,10 +108,12 @@ export function rateDefindexVault(
     const hr = ["HR-D1 no rated strategies ⇒ not eligible, grade E"];
     return finishVault(vault, 0, 6, false, factors, hr, hr, now ?? 0, [], []);
   }
-  let worst = strategyRatings[0];
-  for (const s of strategyRatings) if (s.score < worst.score) worst = s;
+  // Worst-of the rated strategies; an unrated (NR) strategy already makes the vault ineligible.
+  const rated = strategyRatings.filter((s) => s.score !== null);
+  let worst = rated[0] ?? strategyRatings[0];
+  for (const s of rated) if ((s.score as number) < (worst.score as number)) worst = s;
   const factors: RatingFactor[] = [
-    { key: "worst_strategy", value: worst.score, weight: 1, contribution: worst.score, raw: worst.reasonsHash, note: `worst strategy ${worst.name} grade ${worst.grade}` },
+    { key: "worst_strategy", value: worst.score ?? 0, weight: 1, contribution: worst.score ?? 0, raw: worst.reasonsHash, note: `worst strategy ${worst.name} grade ${worst.grade}` },
   ];
   const eligible = strategyRatings.every((s) => s.eligibleForDeposit);
   const status = Math.max(...strategyRatings.map((s) => s.status));
@@ -125,7 +135,7 @@ export function rateDefindexVault(
 function finish(
   input: DefindexStrategyInput,
   poolId: string,
-  score: number,
+  score: number | null,
   status: number,
   eligible: boolean,
   factors: RatingFactor[],
@@ -134,7 +144,7 @@ function finish(
   now: number | undefined,
   underlyingHashes: string[],
 ): PoolRating {
-  const grade = gradeFor(score);
+  const grade = score === null ? "NR" : gradeFor(score);
   return {
     poolId: input.strategyId,
     name: input.name,
@@ -165,7 +175,7 @@ function finish(
 
 function finishVault(
   vault: { vaultId: string; name: string; tvlUsd?: number | null },
-  score: number,
+  score: number | null,
   status: number,
   eligible: boolean,
   factors: RatingFactor[],
@@ -175,7 +185,7 @@ function finishVault(
   underlyingHashes: string[],
   strategyIds: string[],
 ): PoolRating {
-  const grade = gradeFor(score);
+  const grade = score === null ? "NR" : gradeFor(score);
   return {
     poolId: vault.vaultId,
     name: vault.name,

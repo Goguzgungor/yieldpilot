@@ -37,9 +37,12 @@ interface Rating {
   poolId: string;
   name: string;
   protocol: "blend" | "defindex";
-  score: number;
+  /** null when not rated (grade NR). */
+  score: number | null;
   uncappedScore?: number;
-  grade: "A" | "B" | "C" | "D" | "E";
+  grade: "A" | "B" | "C" | "D" | "E" | "NR";
+  notRated?: string;
+  deployment?: string;
   status: number;
   statusLabel: string;
   eligibleForDeposit: boolean;
@@ -100,8 +103,13 @@ const BAND_LABELS: Array<[number, Rating["grade"]]> = [
  * first, so the table leads with the reason that matters most.
  */
 const RULES: Array<{ code: string; text: (rule: string) => string }> = [
+  {
+    code: "NR",
+    text: (rule) =>
+      rule.includes("never launched") ? "Not rated: the pool was never launched" : "Not rated: too little supplied to measure a market",
+  },
   { code: "HR3", text: () => "Collateral price can be pushed cheaply on SDEX; borrowing against it would be profitable" },
-  { code: "HR2", text: () => "A collateral price is missing or stale" },
+  { code: "HR2", text: () => "A price is missing or stale, on collateral or on a borrowed asset" },
   { code: "HR5", text: () => "A collateral price source could not be identified" },
   {
     code: "HR1",
@@ -110,7 +118,13 @@ const RULES: Array<{ code: string; text: (rule: string) => string }> = [
         ? "Pool was never launched; it takes no deposits"
         : "Blend has closed deposits in this pool",
   },
-  { code: "HR7", text: () => "Uninsured: Blend's backstop is empty, so at most B" },
+  {
+    code: "HR7",
+    text: (rule) =>
+      rule.includes("queued for withdrawal")
+        ? "Its backstop is leaving: 30%+ is queued for withdrawal, so at most B"
+        : "Uninsured: the backstop is below Blend's threshold, so at most B",
+  },
   { code: "HR4", text: () => "Overall score is below 50" },
   { code: "HR6", text: () => "A collateral is priced by a weak source; an A needs robust feeds on every collateral" },
 ];
@@ -125,7 +139,10 @@ function mainReason(r: Rating): string {
     const hit = rules.find((x) => x.startsWith(code) || x.includes(`${code} `));
     if (hit) return viaPool(text(hit));
   }
-  return viaPool(r.reasons[0]?.replace(/^underlying: /, "") ?? "");
+  // No rule fired: lead with the weakest factor, named as on the factor list.
+  const first = r.reasons[0]?.replace(/^underlying: /, "") ?? "";
+  const m = first.match(/^([a-z_]+): (.*)$/);
+  return viaPool(m && FACTOR_LABELS[m[1]] ? `${FACTOR_LABELS[m[1]]}: ${m[2]}` : first);
 }
 
 /** Blend's own pool state, in plain words (pool.rs: borrowing off above 1, supplying off above 3). */
@@ -146,7 +163,7 @@ function usd(n: number): string {
 /** One-line summary for the table: how far B and A are. */
 function pathSummary(r: Rating): string | null {
   const p = r.paths;
-  if (!p) return null;
+  if (!p || r.score === null) return null;
   const one = (g: GradePath) =>
     g.already ? `${g.target}: already` : g.reachable ? `${g.target}: ${g.steps.length} change${g.steps.length === 1 ? "" : "s"}` : `${g.target}: out of reach`;
   return p.A.already ? "Rated A" : `${one(p.B)} · ${one(p.A)}`;
@@ -177,7 +194,7 @@ function PathBlock({ path, label }: { path: GradePath; label: string }) {
 
 function Paths({ r }: { r: Rating }) {
   const p = r.paths;
-  if (!p || p.A.already) return null;
+  if (!p || p.A.already || r.score === null) return null;
   const same = p.B.reachable && p.A.reachable && p.B.levers.join() === p.A.levers.join();
   return (
     <>
@@ -206,29 +223,50 @@ function when(epochSec: number): string {
   return new Date(epochSec * 1000).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 
+/** Pool id, with its Blend deployment once there is more than one. */
+function poolSub(r: Rating, short: boolean): string {
+  if (r.protocol === "defindex") return short ? "DeFindex" : "DeFindex strategy";
+  return `${r.deployment ? `${r.deployment} ` : ""}${truncateAddress(r.poolId, 4, 4)}`;
+}
+
 /** One pool on the screen: a 0–100 track with the final score and, when a rule capped it, the score before. */
 function Track({ r }: { r: Rating }) {
-  const uncapped = r.uncappedScore ?? r.score;
-  const capped = uncapped > r.score;
+  if (r.score === null) {
+    return (
+      <div className="rt-track-row">
+        <div className="rt-track-name">
+          {r.name}
+          <span className="rt-track-sub">{poolSub(r, true)}</span>
+        </div>
+        <div className="rt-track rt-track--nr" role="img" aria-label={`${r.name}: not rated, ${r.notRated ?? ""}`}>
+          <span className="rt-nr-note">not rated</span>
+        </div>
+        <div className="rt-track-grade rt-g-NR">NR</div>
+      </div>
+    );
+  }
+  const score = r.score;
+  const uncapped = r.uncappedScore ?? score;
+  const capped = uncapped > score;
   return (
     <div className="rt-track-row">
       <div className="rt-track-name">
         {r.name}
-        <span className="rt-track-sub">{r.protocol === "defindex" ? "DeFindex" : truncateAddress(r.poolId, 4, 4)}</span>
+        <span className="rt-track-sub">{poolSub(r, true)}</span>
       </div>
       <div
         className="rt-track"
         role="img"
-        aria-label={`${r.name}: score ${r.score}${capped ? `, ${uncapped} before hard rules` : ""}, grade ${r.grade}`}
+        aria-label={`${r.name}: score ${score}${capped ? `, ${uncapped} before hard rules` : ""}, grade ${r.grade}`}
       >
         {BANDS.slice(0, 4).map(([min]) => (
           <span key={min} className="rt-band-tick" style={{ left: `${min}%` }} />
         ))}
         {capped && (
-          <span className="rt-cap" style={{ left: `${r.score}%`, width: `${uncapped - r.score}%` }} />
+          <span className="rt-cap" style={{ left: `${score}%`, width: `${uncapped - score}%` }} />
         )}
         {capped && <span className="rt-ghost" style={{ left: `${uncapped}%` }} />}
-        <span className={`rt-dot rt-g-${r.grade}`} style={{ left: `${r.score}%` }} />
+        <span className={`rt-dot rt-g-${r.grade}`} style={{ left: `${score}%` }} />
       </div>
       <div className={`rt-track-grade rt-g-${r.grade}`}>{r.grade}</div>
     </div>
@@ -240,7 +278,7 @@ function Detail({ r }: { r: Rating }) {
     <div className="rt-detail">
       {r.hardRules.length > 0 && (
         <div className="rt-rules">
-          <div className="rt-h">Hard rules that capped this rating</div>
+          <div className="rt-h">{r.score === null ? "Why this pool has no grade" : "Hard rules that capped this rating"}</div>
           <ul>
             {r.hardRules.map((h) => (
               <li key={h}>
@@ -270,7 +308,7 @@ function Detail({ r }: { r: Rating }) {
           </div>
         </>
       )}
-      <div className="rt-h">Factors</div>
+      <div className="rt-h">{r.score === null ? "Factors, for reference only (no grade is given)" : "Factors"}</div>
       <div className="rt-factors">
         {r.factors.map((f) => (
           <Fragment key={f.key}>
@@ -317,10 +355,9 @@ export default function RatingsView() {
     };
   }, []);
 
-  // Pools that were never launched go last: they hold nothing and take no deposits.
-  const launchedFirst = (r: Rating) => (r.status === 6 ? 1 : 0);
+  // Pools that are not rated (never launched, or too little in them) go last.
   const ratings = data
-    ? [...data.ratings].sort((a, b) => launchedFirst(a) - launchedFirst(b) || b.score - a.score || b.tvlUsd - a.tvlUsd)
+    ? [...data.ratings].sort((a, b) => (b.score ?? -1) - (a.score ?? -1) || b.tvlUsd - a.tvlUsd)
     : [];
   const pools = ratings.filter((r) => r.protocol === "blend");
   const open_ = pools.filter((r) => r.eligibleForDeposit).length;
@@ -333,12 +370,13 @@ export default function RatingsView() {
         </a>
         <h1 className="rt-title">Pool risk ratings</h1>
         <p className="rt-lede">
-          Every Blend V2 pool on Stellar mainnet, and the DeFindex strategies that deposit into them. The grade answers one
-          question: how safe is it to supply here? It comes from each pool&rsquo;s on-chain setup: who prices its
-          collateral and how cheaply that price can be pushed, what the backstop can cover, borrowing pressure and
-          supply caps. A few rules set a ceiling. An uninsured pool, or one with a weak price feed, is at most B; a
-          missing price, at most D; collateral that can be profitably manipulated, E. Blend&rsquo;s own pool state is
-          shown separately: it decides whether you can deposit at all.
+          Every Blend pool on Stellar mainnet, from both the V2 and the v2.1 deployment, and the DeFindex strategies
+          that deposit into them. The grade answers one question: how safe is it to supply here? It comes from each
+          pool&rsquo;s on-chain setup: who prices its collateral and how cheaply that price can be pushed, what the
+          backstop can cover, how much of its most-borrowed asset is lent out, and supply caps. A few rules set a
+          ceiling. An uninsured pool, or one with a weak price feed, is at most B; a missing price, at most D;
+          collateral that can be profitably manipulated, E. A pool that never launched, or holds under $10K, is not
+          rated (NR). Blend&rsquo;s own pool state is shown separately: it decides whether you can deposit at all.
         </p>
       </header>
 
@@ -400,18 +438,18 @@ export default function RatingsView() {
                   >
                     <span className="rt-pool">
                       {r.name}
-                      <small>{r.protocol === "defindex" ? "DeFindex strategy" : truncateAddress(r.poolId, 4, 4)}</small>
+                      <small>{poolSub(r, false)}</small>
                     </span>
                     <span title={r.statusLabel.replace(/_/g, " ")}>{stateLabel(r.status)}</span>
                     <span className={`rt-grade rt-g-${r.grade}`}>{r.grade}</span>
                     <span>
-                      {r.score}
-                      {r.uncappedScore !== undefined && r.uncappedScore > r.score && (
+                      {r.score ?? "—"}
+                      {r.score !== null && r.uncappedScore !== undefined && r.uncappedScore > r.score && (
                         <small> / {r.uncappedScore}</small>
                       )}
                     </span>
                     <span className={r.eligibleForDeposit ? "rt-yes" : "rt-no"}>
-                      {r.eligibleForDeposit ? "Allowed" : r.status >= 4 ? "Closed" : "Blocked"}
+                      {r.eligibleForDeposit ? "Allowed" : r.status >= 4 ? "Closed" : r.score === null ? "Not rated" : "Blocked"}
                     </span>
                     <span>{usd(r.tvlUsd)}</span>
                     <span>
