@@ -35,14 +35,18 @@ describe("scorePools", () => {
     expect(risky.reason).toMatch(/high utilization 95%/);
   });
 
-  it("marks on-ice and frozen Blend pools ineligible even when the numbers look fine", () => {
-    // status 3 = On_Ice (borrowing disabled), 4 = Admin_Frozen (deposits disabled)
-    const onIce = scorePools([{ ...base, poolStatus: 3 }], "aggressive")[0];
+  it("marks frozen and unlaunched Blend pools ineligible even when the numbers look fine", () => {
+    // 4 = Admin_Frozen, 5 = Frozen (deposits disabled), 6 = Setup (never launched)
     const frozen = scorePools([{ ...base, poolStatus: 4 }], "aggressive")[0];
-    expect(onIce.eligible).toBe(false);
-    expect(onIce.reason).toMatch(/on ice/i);
     expect(frozen.eligible).toBe(false);
     expect(frozen.reason).toMatch(/frozen/i);
+    expect(scorePools([{ ...base, poolStatus: 5 }], "aggressive")[0].eligible).toBe(false);
+    expect(scorePools([{ ...base, poolStatus: 6 }], "aggressive")[0].reason).toMatch(/not active/);
+  });
+
+  it("keeps on-ice pools (status 2/3) eligible, like Vigil: Blend still takes deposits there", () => {
+    expect(scorePools([{ ...base, poolStatus: 2 }], "aggressive")[0].eligible).toBe(true);
+    expect(scorePools([{ ...base, poolStatus: 3 }], "aggressive")[0].eligible).toBe(true);
   });
 
   it("keeps active pools (status 0/1) and pools with unknown status eligible", () => {

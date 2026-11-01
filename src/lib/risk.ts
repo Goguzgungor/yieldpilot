@@ -9,10 +9,14 @@ export const MAX_RISK: Record<RiskTolerance, number> = {
   conservative: 35, balanced: 65, aggressive: 100,
 };
 
-/** Why a Blend pool in a non-active status must not receive new deposits. */
+/**
+ * Why a Blend pool must not receive new deposits: Blend itself refuses supply
+ * above status 3 (pool.rs require_action_allowed). On-ice pools (2/3) only stop
+ * new borrowing and still take deposits; their weaker backstop is the risk
+ * score's job, the same rule as Vigil's HR1 (src/lib/vigil/score.ts).
+ */
 function poolStatusReason(status: number | undefined): string | undefined {
-  if (status === undefined || status <= 1) return undefined;
-  if (status === 2 || status === 3) return `pool on ice (status ${status}): borrowing disabled`;
+  if (status === undefined || status <= 3) return undefined;
   if (status === 4 || status === 5) return `pool frozen (status ${status}): deposits disabled`;
   return `pool not active (status ${status})`;
 }
