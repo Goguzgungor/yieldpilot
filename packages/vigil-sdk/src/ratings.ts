@@ -25,7 +25,7 @@ export interface GradePath {
   target: "A" | "B";
   already: boolean;
   reachable: boolean;
-  levers: ("backstop" | "activate" | "oracle" | "caps" | "fresh")[];
+  levers: ("backstop" | "oracle" | "caps" | "fresh")[];
   steps: string[];
   score: number | null;
   grade: "A" | "B" | "C" | "D" | "E" | null;

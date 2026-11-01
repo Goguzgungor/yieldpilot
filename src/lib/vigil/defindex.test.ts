@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { rateDefindexStrategy, rateDefindexVault, type DefindexStrategyInput } from "./defindex";
 import { ratePool } from "./score";
-import { cid, healthyPool, reserve } from "./testkit";
+import { backstop, cid, healthyPool, reserve } from "./testkit";
 
 const good = healthyPool({ poolId: cid("good") });
-const bad = healthyPool({ poolId: cid("bad"), status: 3 });
+// Deposits closed (Admin_Frozen) and uninsured: not eligible, and scores below `good`.
+const bad = healthyPool({ poolId: cid("bad"), status: 4, backstop: backstop({ usdc: 0, blnd: 0, meetsThreshold: false }) });
 const ratings = Object.fromEntries([good, bad].map((p) => [p.poolId, ratePool(p)]));
 const snaps = Object.fromEntries([good, bad].map((p) => [p.poolId, p]));
 const usdc = good.reserves[0].assetId;

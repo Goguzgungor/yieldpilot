@@ -144,7 +144,7 @@ export interface RatingFactor {
 
 export type Grade = "A" | "B" | "C" | "D" | "E";
 
-export type LeverKey = "backstop" | "activate" | "oracle" | "caps" | "fresh";
+export type LeverKey = "backstop" | "oracle" | "caps" | "fresh";
 
 export interface GradePath {
   target: "A" | "B";

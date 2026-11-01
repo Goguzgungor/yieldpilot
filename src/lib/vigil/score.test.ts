@@ -14,7 +14,6 @@ import {
   rhoToScore,
   sourceQuality,
   staleAfterSec,
-  statusFactor,
   supplyCapFactor,
   utilizationFactor,
 } from "./score";
@@ -43,15 +42,17 @@ describe("healthy baseline", () => {
   });
 });
 
-describe("pool_status factor + HR1", () => {
-  it("maps status codes to sub-scores", () => {
-    expect([0, 1, 2, 3, 4, 5, 6].map((status) => statusFactor(healthyPool({ status })).value)).toEqual([100, 100, 40, 30, 10, 0, 0]);
+describe("pool status (HR1, v2.1)", () => {
+  it.each([2, 3])("status %i (borrowing paused) still accepts deposits and is not graded down by status", (status) => {
+    const r = ratePool(healthyPool({ status }));
+    expect(r.eligibleForDeposit).toBe(true);
+    expect(r.grade).toBe("A");
+    expect(r.hardRules.some((h) => h.startsWith("HR1"))).toBe(false);
   });
-  it.each([2, 3, 4, 5, 6])("status %i ⇒ not eligible and grade ≤ D", (status) => {
+  it.each([4, 5, 6])("status %i ⇒ Blend refuses deposits: not eligible, grade unchanged", (status) => {
     const r = ratePool(healthyPool({ status }));
     expect(r.eligibleForDeposit).toBe(false);
-    expect(r.score).toBeLessThanOrEqual(HARD_CAPS.statusNotActive);
-    expect(["D", "E"]).toContain(r.grade);
+    expect(r.grade).toBe("A");
     expect(r.hardRules[0]).toMatch(/^HR1/);
   });
 });

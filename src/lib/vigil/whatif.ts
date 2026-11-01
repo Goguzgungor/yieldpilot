@@ -2,9 +2,9 @@
  * "What would it take?" — for each pool, the smallest set of protocol-side
  * changes after which the engine itself would grade the pool B (65+) or A (80+).
  *
- * Each lever is a concrete change someone can make (refill the backstop, the
- * admin re-activating the pool, a better price feed, a supply cap, a fresh
- * price). Combinations are applied to the snapshot and re-scored with
+ * Each lever is a concrete change someone can make (refill the backstop, a
+ * better price feed, a supply cap, a fresh price). Pool status is not graded
+ * (it only opens or closes deposits), so admin actions are not levers. Combinations are applied to the snapshot and re-scored with
  * {@link ratePool}, so the answer always follows the current methodology.
  * Market conditions (utilization, collateral mix) are not levers. Paths are
  * informational: they are not part of the rating or its reasonsHash.
@@ -15,8 +15,7 @@ import {
   priceProblem,
   ratePool,
   sourceQuality,
-  STATUS_LABELS,
-  THRESHOLDS,
+    THRESHOLDS,
   weakCollateral,
   type RateOptions,
 } from "./score";
@@ -87,16 +86,6 @@ function leversFor(s: PoolSnapshot, opts: RateOptions): Lever[] {
     });
   }
 
-  // 2 — admin re-activation (Admin_On_Ice, Admin_Frozen, Setup). Blend only lets the
-  // admin set Active when the backstop meets its threshold, enforced in validCombo.
-  if (s.status === 2 || s.status === 4 || s.status === 6) {
-    out.push({
-      key: "activate",
-      step: `The pool admin sets the pool to Active (today: ${(STATUS_LABELS[s.status] ?? String(s.status)).replace(/_/g, " ")})`,
-      apply: (x) => ({ ...x, status: 1 }),
-    });
-  }
-
   // 3 — weak price sources on collateral (same set HR6 caps on).
   const weak = weakCollateral(d, assessSdexCollateral(s, d, opts.manipulation)).map((x) => x.r);
   if (weak.length) {
@@ -156,12 +145,9 @@ function blockerFor(s: PoolSnapshot, best: { score: number }, target: "A" | "B")
 export function pathsToGrades(s: PoolSnapshot, opts: RateOptions = {}): GradePaths {
   const now = ratePool(s, opts);
   const levers = leversFor(s, opts);
-  const validCombo = (c: Lever[]) =>
-    !(c.some((l) => l.key === "activate") && !s.backstop?.meetsThreshold && !c.some((l) => l.key === "backstop"));
   const rate = (c: Lever[]) => ratePool(c.reduce((x, l) => l.apply(x), s), opts);
 
-  const allLevers = validCombo(levers) ? levers : levers.filter((l) => l.key !== "activate");
-  const bestAll = levers.length ? rate(allLevers) : now;
+  const bestAll = levers.length ? rate(levers) : now;
 
   const path = (target: "A" | "B"): GradePath => {
     const min = TARGET_MIN[target];
@@ -169,7 +155,6 @@ export function pathsToGrades(s: PoolSnapshot, opts: RateOptions = {}): GradePat
     for (let k = 1; k <= levers.length; k++) {
       let best: { c: Lever[]; score: number; grade: Grade } | null = null;
       for (const c of combos(levers, k)) {
-        if (!validCombo(c)) continue;
         const r = rate(c);
         if (r.score >= min && (!best || r.score > best.score)) best = { c, score: r.score, grade: r.grade };
       }

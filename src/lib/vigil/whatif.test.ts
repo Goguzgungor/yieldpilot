@@ -11,24 +11,24 @@ describe("pathsToGrades", () => {
     expect(p.B).toMatchObject({ reachable: true, already: true, steps: [] });
   });
 
-  it("an on-ice pool with an empty backstop reaches A by refilling the backstop alone (Blend reactivates it)", () => {
+  it("an on-ice pool with an empty backstop is B, and reaches A by refilling the backstop (Blend reactivates it)", () => {
     // Fixed today: status 3 because the backstop is below Blend's threshold.
     const s = healthyPool({ poolId: cid("fixed-like"), status: 3, backstop: backstop({ usdc: 0, blnd: 0, meetsThreshold: false, q4wPct: 0.066 }) });
-    expect(ratePool(s).grade).toBe("D");
+    expect(ratePool(s).grade).toBe("B");
     const p = pathsToGrades(s);
+    expect(p.B.already).toBe(true);
     expect(p.A.reachable).toBe(true);
     expect(p.A.levers).toEqual(["backstop"]);
     expect(p.A.steps[0]).toMatch(/backstop/i);
     expect(p.A.steps[0]).toMatch(/reactivates/i);
     expect(p.A.score).toBeGreaterThanOrEqual(80);
-    expect(p.B.levers).toEqual(["backstop"]);
   });
 
-  it("an admin-frozen pool needs the admin as well, and never the admin without the backstop", () => {
+  it("the grade path never asks for an admin action: status is not graded (it only opens or closes deposits)", () => {
     const s = healthyPool({ poolId: cid("frozen"), status: 4, backstop: backstop({ usdc: 0, blnd: 0, meetsThreshold: false }) });
     const p = pathsToGrades(s);
-    expect(p.A.reachable).toBe(true);
-    expect([...p.A.levers].sort()).toEqual(["activate", "backstop"]);
+    expect(p.A.levers).toEqual(["backstop"]);
+    expect(ratePool(s).eligibleForDeposit).toBe(false);
   });
 
   it("a pool priced by an issuer push oracle needs a better price source to reach A", () => {

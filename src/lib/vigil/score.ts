@@ -18,25 +18,27 @@ import {
   type ReserveYield,
 } from "./types";
 
-export const ENGINE_VERSION = "vigil-risk-v2.0.0";
+export const ENGINE_VERSION = "vigil-risk-v2.1.0";
 
-/** Factor weights (sum = 1). */
+/**
+ * Factor weights (sum = 1). v2.1 dropped the pool_status factor: Blend's
+ * On_Ice / Frozen status is its reaction to the backstop and withdrawal queue,
+ * which backstop_coverage already measures. Status is reported next to the
+ * grade and decides whether deposits are possible (HR1), not the grade itself.
+ */
 export const WEIGHTS = {
-  pool_status: 0.15,
-  oracle_source: 0.15,
-  oracle_freshness: 0.1,
-  sdex_manipulation: 0.2,
-  backstop_coverage: 0.15,
-  utilization: 0.1,
-  supply_caps: 0.1,
+  oracle_source: 0.18,
+  oracle_freshness: 0.12,
+  sdex_manipulation: 0.23,
+  backstop_coverage: 0.18,
+  utilization: 0.12,
+  supply_caps: 0.12,
   collateral_concentration: 0.05,
 } as const;
 
 export type FactorKey = keyof typeof WEIGHTS;
 
 export const WEIGHT_RATIONALE: Record<FactorKey, string> = {
-  pool_status:
-    "Status gates what the pool can do (borrowing off at >1, supplying off at >3 — pool.rs require_action_allowed) and is the pool's own alarm (on-ice/frozen follow backstop stress).",
   oracle_source:
     "Every borrow is valued by the oracle; a lending pool is only as sound as its weakest collateral price (YieldBlox lost ~$10M to one mispriced collateral).",
   oracle_freshness:
@@ -79,7 +81,6 @@ export const STATUS_LABELS: Record<number, string> = {
   5: "Frozen",
   6: "Setup",
 };
-export const STATUS_SCORE: Record<number, number> = { 0: 100, 1: 100, 2: 40, 3: 30, 4: 10, 5: 0, 6: 0 };
 
 export const GRADE_BANDS: ReadonlyArray<readonly [number, Grade]> = [
   [80, "A"],
@@ -90,8 +91,8 @@ export const GRADE_BANDS: ReadonlyArray<readonly [number, Grade]> = [
 ];
 
 export const HARD_CAPS = {
-  /** status >= 2 ⇒ grade ≤ D */
-  statusNotActive: 49,
+  /** backstop below Blend's threshold (no first-loss capital) ⇒ grade ≤ B */
+  uninsured: 79,
   /** collateral with stale/missing price ⇒ grade ≤ D */
   collateralPriceUnavailable: 49,
   /** SDEX-priced collateral with a profitable manipulation (rho < 1) ⇒ grade E */
@@ -175,11 +176,6 @@ function factor(key: FactorKey, c: FactorCalc): RatingFactor {
 }
 
 // ── individual factors (exported for unit tests) ─────────────────────────────
-
-export function statusFactor(s: PoolSnapshot): FactorCalc {
-  const label = STATUS_LABELS[s.status] ?? `unknown(${s.status})`;
-  return { value: STATUS_SCORE[s.status] ?? 0, raw: s.status, note: `pool status ${s.status} ${label}` };
-}
 
 export function sourceQuality(r: ReserveSnapshot): number {
   let q = SOURCE_QUALITY[r.source.kind];
@@ -383,6 +379,20 @@ export function concentrationFactor(d: Derived[]): FactorCalc {
 
 // ── main entry ───────────────────────────────────────────────────────────────
 
+/** The B band's floor: the soft ceiling only compresses the part of a score above it. */
+const B_FLOOR = 65;
+
+/**
+ * The soft "at most B" ceiling used for uninsured pools (HR7) and weak price
+ * feeds (HR6): scores above 65 are compressed linearly into 65..79, so the
+ * grade tops out at B while pools keep their order (a hard min(score, 79)
+ * would flatten every such pool to the same number).
+ */
+export function softCeiling(score: number, cap: number = HARD_CAPS.uninsured): number {
+  if (score <= B_FLOOR) return score;
+  return B_FLOOR + ((score - B_FLOOR) * (cap - B_FLOOR)) / (100 - B_FLOOR);
+}
+
 /**
  * Collateral whose price source is not robust (quality below
  * THRESHOLDS.robustSourceQuality), excluding SDEX-priced assets whose order
@@ -401,7 +411,6 @@ export function ratePool(s: PoolSnapshot, opts: RateOptions = {}): PoolRating {
   const fresh = oracleFreshnessFactor(d, nowSec);
 
   const factors: RatingFactor[] = [
-    factor("pool_status", statusFactor(s)),
     factor("oracle_source", oracleSourceFactor(d)),
     factor("oracle_freshness", fresh),
     factor("sdex_manipulation", manipulationFactor(manip)),
@@ -416,10 +425,11 @@ export function ratePool(s: PoolSnapshot, opts: RateOptions = {}): PoolRating {
   let eligible = true;
   const hardRules: string[] = [];
 
-  if (s.status >= 2) {
+  // Blend refuses supply when status > 3 (pool.rs require_action_allowed): the
+  // grade still describes the setup, but nobody can deposit.
+  if (s.status >= 4) {
     eligible = false;
-    score = Math.min(score, HARD_CAPS.statusNotActive);
-    hardRules.push(`HR1 status ${s.status} (${STATUS_LABELS[s.status] ?? "unknown"}) ≥ 2 ⇒ not eligible, grade ≤ D`);
+    hardRules.push(`HR1 status ${s.status} (${STATUS_LABELS[s.status] ?? "unknown"}): Blend does not accept deposits ⇒ not eligible`);
   }
   if (fresh.collateralProblems.length) {
     eligible = false;
@@ -438,12 +448,17 @@ export function ratePool(s: PoolSnapshot, opts: RateOptions = {}): PoolRating {
     score = Math.min(score, HARD_CAPS.unverifiableCollateralSource);
     hardRules.push(`HR5 collateral price source unidentifiable (${opaque.map((x) => x.r.symbol).join(", ")}) ⇒ not eligible, grade ≤ C`);
   }
+  // HR6 / HR7 share one soft ceiling, applied once even when both hold.
+  const uninsured = !s.backstop || !s.backstop.meetsThreshold;
   const weakColl = weakCollateral(d, manip);
-  if (weakColl.length && score > HARD_CAPS.weakCollateralSource) {
-    score = HARD_CAPS.weakCollateralSource;
-    hardRules.push(
-      `HR6 collateral priced by a weak source (${weakColl.map((x) => `${x.r.symbol} ← ${x.r.source.kind}`).join(", ")}) ⇒ grade ≤ B`,
-    );
+  if ((uninsured || weakColl.length) && score > B_FLOOR) {
+    score = softCeiling(score);
+    if (uninsured) hardRules.push("HR7 backstop below Blend's threshold: no first-loss capital (uninsured) ⇒ at most B (65+ compressed into 65–79)");
+    if (weakColl.length) {
+      hardRules.push(
+        `HR6 collateral priced by a weak source (${weakColl.map((x) => `${x.r.symbol} ← ${x.r.source.kind}`).join(", ")}) ⇒ at most B (65+ compressed into 65–79)`,
+      );
+    }
   }
   score = Math.round(clamp(score));
   if (score < 50 && eligible) {

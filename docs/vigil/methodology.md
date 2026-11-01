@@ -86,6 +86,22 @@ So `max_dev` blocks a one-round spike. A manipulated price that is **held for tw
 
 Vigil therefore models `roundsToHold = 2` when `0 < max_dev < 100`, and `1` otherwise. It does **not** model a geometric `(1+max_dev)^N` ramp.
 
+## v2.1 changes (2026-11-01)
+
+v2.0 gave every non-active pool the same 49 (D), which hid the differences that matter: once Blend's backstop was drained every pool fell into that cap. v2.1 makes the grade answer one question, "how safe is it to supply here?", and keeps Blend's pool state as a separate label.
+
+| | v2.0 | v2.1 |
+|---|---|---|
+| Pool status | a 15% factor, plus HR1: status ≥ 2 ⇒ ≤ 49 (D), not eligible | not graded. HR1 only marks status ≥ 4 (Admin_Frozen, Frozen, Setup) as not eligible, because Blend refuses supply above 3 (`pool.rs` `require_action_allowed`). On_Ice pools accept deposits and are graded on their merits |
+| Weights | status 0.15, source 0.15, freshness 0.10, manipulation 0.20, backstop 0.15, utilization 0.10, caps 0.10, concentration 0.05 | source 0.18, freshness 0.12, manipulation 0.23, backstop 0.18, utilization 0.12, caps 0.12, concentration 0.05 |
+| Uninsured (backstop below Blend's threshold) | counted three times: backstop factor, status factor, HR1 cap | backstop factor, plus HR7: at most B |
+| Weak collateral price source | factor only | HR6: at most B (SDEX assets with verified depth count as robust) |
+| "At most B" | n/a | a soft ceiling: scores above 65 are compressed linearly into 65–79, so pools keep their order instead of all landing on 79 |
+
+HR2 (missing collateral price, ≤ 49), HR3 (profitable SDEX manipulation, ≤ 34, E), HR4 (score < 50 ⇒ not eligible) and HR5 (unidentifiable source, ≤ 64) are unchanged and stay hard caps: they describe conditions where the number below the cap carries no useful information.
+
+The sections below describe v2.0 where they mention the status factor or HR1; this table is authoritative where they differ.
+
 ## 4. Scoring
 
 Each factor produces a sub-score from 0 to 100, where higher is safer:
