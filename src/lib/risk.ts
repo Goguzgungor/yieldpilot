@@ -5,7 +5,7 @@ const MIN_TVL: Record<RiskTolerance, bigint> = {
   balanced: 0n,                  // no hard TVL floor; risk score governs
   aggressive: 0n,
 };
-const MAX_RISK: Record<RiskTolerance, number> = {
+export const MAX_RISK: Record<RiskTolerance, number> = {
   conservative: 35, balanced: 65, aggressive: 100,
 };
 

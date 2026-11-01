@@ -21,7 +21,8 @@ export interface FreighterState {
   error: string | null;
 }
 
-const DISCONNECT_KEY = "yieldpilot:wallet-disconnected";
+// Pre-rename key, kept so a disconnect a user already chose still holds.
+const DISCONNECT_KEY = "yieldseeker:wallet-disconnected";
 
 export function useFreighter() {
   const [state, setState] = useState<FreighterState>({

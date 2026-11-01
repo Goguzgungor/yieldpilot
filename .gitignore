@@ -17,3 +17,6 @@ scripts/blend-utils
 .wrangler
 .dev.vars
 cloudflare-env.d.ts
+loadtest-runs/
+.env.loadtest
+.env.prod.local

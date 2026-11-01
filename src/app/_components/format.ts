@@ -121,3 +121,11 @@ export function networkLabel(network: string | null | undefined): string {
   if (n === "FUTURENET") return "Futurenet";
   return network;
 }
+
+/** "05:48" under an hour, "14 h" under a day, else "2 d" — time until `targetMs`. */
+export function formatUntil(targetMs: number, nowMs = Date.now()): string {
+  const secs = Math.max(0, Math.round((targetMs - nowMs) / 1000));
+  if (secs < 3600) return `${String(Math.floor(secs / 60)).padStart(2, "0")}:${String(secs % 60).padStart(2, "0")}`;
+  if (secs < 86400) return `${Math.round(secs / 3600)} h`;
+  return `${Math.round(secs / 86400)} d`;
+}

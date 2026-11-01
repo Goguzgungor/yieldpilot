@@ -1,4 +1,4 @@
-# YieldSeeker · Stellar — Ürün Açıklaması
+# YieldPilot · Stellar — Ürün Açıklaması
 
 > **Tek cümlelik tanım:** Atıl duran USDC'niz için en iyi DeFi getirisini gece gündüz avlayan, parayı sizin risk toleransınıza göre en yüksek getiriye otomatik taşıyan otonom bir yapay zekâ ajanı — siz bir kez kurarsınız, gerisini ajan halleder.
 
@@ -13,7 +13,7 @@
 
 İnsanların cüzdanında ve borsasında **boşta bekleyen stablecoin** (USDC) var. Bu para çoğu zaman hiç çalışmıyor; çünkü en iyi getiriyi bulmak, riski değerlendirmek ve fonu sürekli en doğru yere taşımak **tam zamanlı bir iş** ve sıradan kullanıcı için fazla teknik.
 
-**YieldSeeker** bu işi bir otonom yapay zekâ ajanına devreder. Kullanıcı parasını bir kez yatırır ve ajana sınırlı bir yetki verir; ajan o andan itibaren piyasayı sürekli tarar, en iyi risk-ayarlı getiriyi seçer ve parayı oraya kendisi taşır. Kullanıcı her hamleyi tek tek onaylamak zorunda kalmaz.
+**YieldPilot** bu işi bir otonom yapay zekâ ajanına devreder. Kullanıcı parasını bir kez yatırır ve ajana sınırlı bir yetki verir; ajan o andan itibaren piyasayı sürekli tarar, en iyi risk-ayarlı getiriyi seçer ve parayı oraya kendisi taşır. Kullanıcı her hamleyi tek tek onaylamak zorunda kalmaz.
 
 Ürünün özü üç vaatte toplanıyor:
 
@@ -21,7 +21,7 @@
 2. **Güvenli devir** — ajan paranızı **dışarı çıkaramaz**; yalnızca önceden onaylanmış getiri havuzları arasında, günlük harcama limitiyle hareket edebilir. Sunucu ele geçirilse bile fonlar kaçırılamaz.
 3. **Şeffaflık** — ajan ne yaptığını, neden yaptığını canlı bir ekranda ve sade bir dille gösterir. Kara kutu değil, izlenebilir bir asistan.
 
-YieldSeeker, Base ağında doğmuş ve **ETHGlobal Agentic Ethereum 2025 finalisti** olmuş orijinal bir konseptin, Stellar ağına taşınmış ve yeniden tasarlanmış hâlidir. Stellar'a taşımanın temel ticari mantığı: Stellar'daki ana lending protokolü olan **Blend, USDC için aylardır ~%8+ getiri** sunuyor — bu, Base/Ethereum tarafındaki benzer protokollerin (%2-5) belirgin üzerinde. Yani "getiri avcısı" tezi burada daha güçlü çalışıyor.
+YieldPilot, Base ağında doğmuş ve **ETHGlobal Agentic Ethereum 2025 finalisti** olmuş orijinal **YieldSeeker** konseptinin Stellar ağına taşınmış ve yeniden tasarlanmış hâlidir. Stellar'a taşımanın temel ticari mantığı: Stellar'daki ana lending protokolü olan **Blend, USDC için aylardır ~%8+ getiri** sunuyor — bu, Base/Ethereum tarafındaki benzer protokollerin (%2-5) belirgin üzerinde. Yani "getiri avcısı" tezi burada daha güçlü çalışıyor.
 
 ---
 
@@ -42,7 +42,7 @@ Sonuç: Getiri fırsatı **var**, ama ona ulaşmak için gereken zaman, bilgi ve
 
 ## 3. Çözüm
 
-YieldSeeker, kullanıcı ile DeFi getirisi arasındaki bu mesafeyi bir **otonom ajan** ile kapatır. Ürün üç katmandan oluşur:
+YieldPilot, kullanıcı ile DeFi getirisi arasındaki bu mesafeyi bir **otonom ajan** ile kapatır. Ürün üç katmandan oluşur:
 
 **1) Sürekli tarayan göz.** Ajan, Stellar üzerindeki getiri kaynaklarını (bugün Blend ve DeFindex; yarın daha fazlası) düzenli olarak tarar ve her havuzun güncel getirisini, büyüklüğünü ve sağlık durumunu okur.
 
@@ -56,7 +56,7 @@ Kullanıcı tarafında deneyim son derece sade: cüzdanını bağla → bir kez 
 
 ## 4. Hedef Kullanıcı
 
-| Persona | Kim | İhtiyaç | YieldSeeker'ın cevabı |
+| Persona | Kim | İhtiyaç | YieldPilot'ın cevabı |
 |---------|-----|---------|------------------------|
 | **"Pasif kazanç isteyen birikimci"** | Elinde stablecoin tutan ama aktif yönetmek istemeyen kullanıcı | "Param çalışsın ama ben uğraşmayayım." | Bir kez kur, ajan sürekli optimize etsin. |
 | **"Getiri avcısı ama zamanı yok"** | DeFi'yi bilen, en iyi oranı kovalayan ama 7/24 ekran başında olamayan kullanıcı | "En iyi oranı kaçırmak istemiyorum." | Ajan saatlik fırsatları yakalar, elle takip gerekmez. |
@@ -69,7 +69,7 @@ Ortak payda: **"Getiriyi istiyorum ama yönetim yükünü ve güven riskini iste
 
 ## 5. Değer Önerisi
 
-YieldSeeker'ı rakiplerinden ve "elle yapmaktan" ayıran dört temel fayda:
+YieldPilot'ı rakiplerinden ve "elle yapmaktan" ayıran dört temel fayda:
 
 ### 🔁 Bir kez kur, ajan çalışsın
 Kullanıcı tek seferlik bir kurulum yapar (hesap oluştur, ajana yetki ver, para yatır). Sonrasında hiçbir hamleyi tek tek onaylamak zorunda değildir. Ajan, kullanıcı uyurken de en iyi getiriyi kovalar.
@@ -131,23 +131,23 @@ Kullanıcının gördüğü deneyim, dört adımlık bir kurulum ve sonrasında 
 
 ---
 
-## 8. Farklılaşma — Neden YieldSeeker?
+## 8. Farklılaşma — Neden YieldPilot?
 
 **"Elle yapmaya" karşı:** İnsan saatlik oran değişimlerini takip edip parayı taşıyamaz; ajan yapar.
 
-**Sıradan getiri toplayıcılarına (yield aggregator) karşı:** Çoğu toplayıcı statik kurallarla çalışır ve **açıklama vermez**. YieldSeeker bir yapay zekâ ile karar verir ve kararını **dille gerekçelendirir** — güven ve şeffaflık burada farklılaşır.
+**Sıradan getiri toplayıcılarına (yield aggregator) karşı:** Çoğu toplayıcı statik kurallarla çalışır ve **açıklama vermez**. YieldPilot bir yapay zekâ ile karar verir ve kararını **dille gerekçelendirir** — güven ve şeffaflık burada farklılaşır.
 
-**Cüzdan-emanet otomasyonlara karşı:** Birçok otomasyon çözümü fonların kontrolünü ele alır. YieldSeeker'ın **drain-korumalı, zincire kazınmış yetki modeli** "para sizde kalır, sadece getiri havuzları arasında hareket eder" garantisi verir.
+**Cüzdan-emanet otomasyonlara karşı:** Birçok otomasyon çözümü fonların kontrolünü ele alır. YieldPilot'ın **drain-korumalı, zincire kazınmış yetki modeli** "para sizde kalır, sadece getiri havuzları arasında hareket eder" garantisi verir.
 
 **Ekosistem zamanlaması:** Stellar'da Blend'in **~%8+ USDC getirisi**, bu ürünün ticari tezini Base/Ethereum'a göre daha güçlü kılıyor. Ayrıca Stellar'ın olgun "akıllı cüzdan / kısıtlı imzacı" altyapısı, güvenli ajan modelini yerli olarak destekliyor.
 
-> **Pazar bağlamı:** Otonom DeFi ajanları 2025-2026'da hackathon ve ticari sahnenin baskın temasıydı (ör. Base üzerinde Giza ARMA gibi otonom stablecoin getiri ajanları milyarlarca dolarlık hacim raporladı). YieldSeeker, bu dalganın **Stellar'a getirilmiş, güvenlik-öncelikli** bir yorumudur.
+> **Pazar bağlamı:** Otonom DeFi ajanları 2025-2026'da hackathon ve ticari sahnenin baskın temasıydı (ör. Base üzerinde Giza ARMA gibi otonom stablecoin getiri ajanları milyarlarca dolarlık hacim raporladı). YieldPilot, bu dalganın **Stellar'a getirilmiş, güvenlik-öncelikli** bir yorumudur.
 
 ---
 
 ## 9. Mevcut Durum (Dürüst Değerlendirme)
 
-YieldSeeker şu an **çalışan bir MVP / hackathon demo'su**. Neyin gerçek, neyin henüz simülasyon olduğu konusunda net olmak önemli:
+YieldPilot şu an **çalışan bir MVP / hackathon demo'su**. Neyin gerçek, neyin henüz simülasyon olduğu konusunda net olmak önemli:
 
 **Gerçek olan:**
 - Getiri taraması **gerçek mainnet** Blend ve DeFindex verisini okur (gerçek ~%4-8 USDC oranları).
@@ -210,7 +210,7 @@ YieldSeeker şu an **çalışan bir MVP / hackathon demo'su**. Neyin gerçek, ne
 
 ## 13. Özet
 
-YieldSeeker, **"boştaki stablecoin'i, güvenli ve şeffaf bir yapay zekâ ajanına emanet edip pasif getiri kazanma"** fikrini Stellar ağında somutlaştıran bir üründür. Değerinin merkezinde üç şey var: **otonomi** (bir kez kur, ajan çalışsın), **güven** (ajan paranızı çalamaz — kurallar zincirde) ve **şeffaflık** (ne yaptığını canlı ve sade dille görürsünüz).
+YieldPilot, **"boştaki stablecoin'i, güvenli ve şeffaf bir yapay zekâ ajanına emanet edip pasif getiri kazanma"** fikrini Stellar ağında somutlaştıran bir üründür. Değerinin merkezinde üç şey var: **otonomi** (bir kez kur, ajan çalışsın), **güven** (ajan paranızı çalamaz — kurallar zincirde) ve **şeffaflık** (ne yaptığını canlı ve sade dille görürsünüz).
 
 Bugün çalışan bir MVP olarak gerçek piyasa verisini, gerçek bir yapay zekâ kararını ve gerçek zincir işlemlerini (testnet'te) birleştiriyor. Önündeki yol; daha çok getiri kaynağı, mainnet'te gerçek para ve üretim-seviye güvenlik denetimi.
 

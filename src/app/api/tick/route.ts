@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { runAgentTick } from "../../../lib/runtime";
 
 export const dynamic = "force-dynamic";
-// The autonomous tick scans mainnet, asks the LLM, and supplies each user's idle
+// The autonomous tick scans mainnet, picks the best eligible pool, and supplies each user's idle
 // USDC on testnet — give it room beyond the 10s default.
 export const maxDuration = 60;
 

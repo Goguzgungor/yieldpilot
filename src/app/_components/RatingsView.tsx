@@ -124,65 +124,65 @@ function Track({ r }: { r: Rating }) {
   const uncapped = r.uncappedScore ?? r.score;
   const capped = uncapped > r.score;
   return (
-    <div className="ys-rt-track-row">
-      <div className="ys-rt-track-name">
+    <div className="rt-track-row">
+      <div className="rt-track-name">
         {r.name}
-        <span className="ys-rt-track-sub">{r.protocol === "defindex" ? "DeFindex" : truncateAddress(r.poolId, 4, 4)}</span>
+        <span className="rt-track-sub">{r.protocol === "defindex" ? "DeFindex" : truncateAddress(r.poolId, 4, 4)}</span>
       </div>
       <div
-        className="ys-rt-track"
+        className="rt-track"
         role="img"
         aria-label={`${r.name}: score ${r.score}${capped ? `, ${uncapped} before hard rules` : ""}, grade ${r.grade}`}
       >
         {BANDS.slice(0, 4).map(([min]) => (
-          <span key={min} className="ys-rt-band-tick" style={{ left: `${min}%` }} />
+          <span key={min} className="rt-band-tick" style={{ left: `${min}%` }} />
         ))}
         {capped && (
-          <span className="ys-rt-cap" style={{ left: `${r.score}%`, width: `${uncapped - r.score}%` }} />
+          <span className="rt-cap" style={{ left: `${r.score}%`, width: `${uncapped - r.score}%` }} />
         )}
-        {capped && <span className="ys-rt-ghost" style={{ left: `${uncapped}%` }} />}
-        <span className={`ys-rt-dot ys-rt-g-${r.grade}`} style={{ left: `${r.score}%` }} />
+        {capped && <span className="rt-ghost" style={{ left: `${uncapped}%` }} />}
+        <span className={`rt-dot rt-g-${r.grade}`} style={{ left: `${r.score}%` }} />
       </div>
-      <div className={`ys-rt-track-grade ys-rt-g-${r.grade}`}>{r.grade}</div>
+      <div className={`rt-track-grade rt-g-${r.grade}`}>{r.grade}</div>
     </div>
   );
 }
 
 function Detail({ r }: { r: Rating }) {
   return (
-    <div className="ys-rt-detail">
+    <div className="rt-detail">
       {r.hardRules.length > 0 && (
-        <div className="ys-rt-rules">
-          <div className="ys-rt-h">Hard rules that capped this rating</div>
+        <div className="rt-rules">
+          <div className="rt-h">Hard rules that capped this rating</div>
           <ul>
             {r.hardRules.map((h) => (
-              <li key={h} className="ys-prose">
+              <li key={h}>
                 {h}
               </li>
             ))}
           </ul>
         </div>
       )}
-      <div className="ys-rt-h">Factors</div>
-      <div className="ys-rt-factors">
+      <div className="rt-h">Factors</div>
+      <div className="rt-factors">
         {r.factors.map((f) => (
           <Fragment key={f.key}>
-            <div className="ys-rt-f-name">
+            <div className="rt-f-name">
               {FACTOR_LABELS[f.key] ?? f.key}
-              <span className="ys-rt-f-weight">{Math.round(f.weight * 100)}%</span>
+              <span className="rt-f-weight">{Math.round(f.weight * 100)}%</span>
             </div>
-            <div className="ys-rt-f-bar" aria-hidden="true">
+            <div className="rt-f-bar" aria-hidden="true">
               <span style={{ width: `${f.value}%` }} />
             </div>
-            <div className="ys-rt-f-val">{f.value}</div>
-            <div className="ys-rt-f-note ys-prose">{f.note}</div>
+            <div className="rt-f-val">{f.value}</div>
+            <div className="rt-f-note">{f.note}</div>
           </Fragment>
         ))}
       </div>
-      <div className="ys-rt-hash">
-        reasonsHash <code className="ys-code">{r.reasonsHash}</code>
+      <div className="rt-hash">
+        reasonsHash <code>{r.reasonsHash}</code>
         {r.protocol === "blend" && (
-          <a className="ys-inline-link" href={stellarExpertUrl(r.poolId)} target="_blank" rel="noreferrer">
+          <a href={stellarExpertUrl(r.poolId)} target="_blank" rel="noreferrer">
             Pool on Stellar Expert ↗
           </a>
         )}
@@ -215,13 +215,13 @@ export default function RatingsView() {
   const open_ = pools.filter((r) => r.eligibleForDeposit).length;
 
   return (
-    <main className="ys-rt-page">
-      <header className="ys-rt-head">
-        <a href="/" className="ys-rt-back">
+    <main className="rt-page">
+      <header className="rt-head">
+        <a href="/" className="rt-back">
           YieldPilot
         </a>
-        <h1 className="ys-rt-title">Pool risk ratings</h1>
-        <p className="ys-rt-lede ys-prose">
+        <h1 className="rt-title">Pool risk ratings</h1>
+        <p className="rt-lede">
           Every Blend V2 pool on Stellar mainnet and the DeFindex strategies that deposit into them, rated from on-chain
           configuration: who prices each collateral, what the backstop can cover, pool status and reserve settings.
           Higher is safer. A pool below grade C, or in any hard-rule state, should not receive new deposits.
@@ -229,29 +229,29 @@ export default function RatingsView() {
       </header>
 
       {!data && !error && (
-        <div className="ys-rt-screen ys-rt-wait ys-prose">
+        <div className="rt-screen rt-wait">
           Reading every Blend pool from mainnet. The first load of the hour takes about a minute and a half.
         </div>
       )}
       {error && (
-        <div className="ys-rt-screen ys-rt-wait ys-prose">
+        <div className="rt-screen rt-wait">
           Ratings could not be loaded: {error}. Reload the page to try again.
         </div>
       )}
 
       {data && (
         <>
-          <section className="ys-rt-screen" aria-label="Scores">
-            <div className="ys-rt-readout">
+          <section className="rt-screen" aria-label="Scores">
+            <div className="rt-readout">
               <span>
                 {open_} of {pools.length} Blend pools accept deposits under Vigil
               </span>
-              <span className="ys-rt-legend">
-                <span className="ys-rt-dot ys-rt-dot--legend" /> score
-                <span className="ys-rt-ghost ys-rt-ghost--legend" /> before hard rules
+              <span className="rt-legend">
+                <span className="rt-dot rt-dot--legend" /> score
+                <span className="rt-ghost rt-ghost--legend" /> before hard rules
               </span>
             </div>
-            <div className="ys-rt-scale" aria-hidden="true">
+            <div className="rt-scale" aria-hidden="true">
               {BAND_LABELS.map(([centre, g]) => (
                 <span key={g} style={{ left: `${centre}%` }}>
                   {g}
@@ -263,8 +263,8 @@ export default function RatingsView() {
             ))}
           </section>
 
-          <section className="ys-rt-table" aria-label="Ratings">
-            <div className="ys-rt-row ys-rt-row--head">
+          <section className="rt-table" aria-label="Ratings">
+            <div className="rt-row rt-row--head">
               <span>Pool</span>
               <span>Status</span>
               <span>Grade</span>
@@ -279,27 +279,27 @@ export default function RatingsView() {
                 <Fragment key={r.poolId}>
                   <button
                     type="button"
-                    className={isOpen ? "ys-rt-row ys-rt-row--open" : "ys-rt-row"}
+                    className={isOpen ? "rt-row rt-row--open" : "rt-row"}
                     aria-expanded={isOpen}
                     onClick={() => setOpen(isOpen ? null : r.poolId)}
                   >
-                    <span className="ys-rt-pool">
+                    <span className="rt-pool">
                       {r.name}
                       <small>{r.protocol === "defindex" ? "DeFindex strategy" : truncateAddress(r.poolId, 4, 4)}</small>
                     </span>
                     <span>{r.statusLabel.replace(/_/g, " ")}</span>
-                    <span className={`ys-rt-grade ys-rt-g-${r.grade}`}>{r.grade}</span>
+                    <span className={`rt-grade rt-g-${r.grade}`}>{r.grade}</span>
                     <span>
                       {r.score}
                       {r.uncappedScore !== undefined && r.uncappedScore > r.score && (
                         <small> / {r.uncappedScore}</small>
                       )}
                     </span>
-                    <span className={r.eligibleForDeposit ? "ys-rt-yes" : "ys-rt-no"}>
+                    <span className={r.eligibleForDeposit ? "rt-yes" : "rt-no"}>
                       {r.eligibleForDeposit ? "Allowed" : "Blocked"}
                     </span>
                     <span>{usd(r.tvlUsd)}</span>
-                    <span className="ys-rt-reason ys-prose">{mainReason(r)}</span>
+                    <span className="rt-reason">{mainReason(r)}</span>
                   </button>
                   {isOpen && <Detail r={r} />}
                 </Fragment>
@@ -307,15 +307,15 @@ export default function RatingsView() {
             })}
           </section>
 
-          <footer className="ys-rt-foot ys-prose">
+          <footer className="rt-foot">
             Computed {when(data.computedAt)} from mainnet: {data.coverage.rated} of {data.coverage.poolsFound} pools
             {data.coverage.failed.length ? ` (${data.coverage.failed.length} unreadable)` : ""}, engine{" "}
             {data.engineVersion}.{data.stale && " The latest refresh failed, so this is the last good run."} Read the{" "}
-            <a className="ys-inline-link" href={data.methodology} target="_blank" rel="noreferrer">
+            <a href={data.methodology} target="_blank" rel="noreferrer">
               methodology
             </a>{" "}
             or use the{" "}
-            <a className="ys-inline-link" href="/api/ratings">
+            <a href="/api/ratings">
               JSON API
             </a>
             .

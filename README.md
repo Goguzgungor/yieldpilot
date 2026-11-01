@@ -73,7 +73,7 @@ Copy `.env.example` to `.env`. `CLAUDE.md` describes the architecture: the scan/
 
 | Path | What |
 |---|---|
-| `src/lib/` | agent loop: scanner, DeFindex, risk, LLM decision, per-user executor, smart-account auth |
+| `src/lib/` | agent loop: scanner, DeFindex, risk, deterministic pool choice, per-user executor, smart-account auth |
 | `src/lib/vigil/` | Vigil risk engine v2 |
 | `src/app/` | Next.js UI + API routes (`/api/onboard/*`, `/api/scan`, `/api/ratings`, …) |
 | `contracts/` | `vigil-guard`, `vigil-registry`, shared `vigil-interface` (Rust, soroban-sdk 28, OZ stellar-accounts 0.8) |

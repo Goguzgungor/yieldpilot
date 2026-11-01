@@ -35,6 +35,8 @@ export function getAgentKeypair(): Keypair {
  * unrelated to (and never exposing) any real user's key.
  */
 export function getDemoOwnerKeypair(): Keypair {
+  // The "yieldseeker" tag is frozen (pre-rename): it fixes the demo-owner key that
+  // every deployed smart account already trusts. Changing it orphans them.
   const seed = hash(Buffer.from(`yieldseeker-demo-owner:v1|${requireAgentSecret()}`));
   return Keypair.fromRawEd25519Seed(seed);
 }

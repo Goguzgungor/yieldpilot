@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import { parseConfig } from "./config";
 
 const env = {
-  ANTHROPIC_API_KEY: "k", ANTHROPIC_MODEL: "claude-sonnet-4-6",
   RISK_TOLERANCE: "balanced",
   // Scan side (mainnet)
   SCAN_RPC_URL: "https://mainnet.sorobanrpc.com",

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getLastScan, ensureScanPopulated } from "../../../lib/runtime";
 
 export const dynamic = "force-dynamic";
-// First-ever load runs one lazy scan (mainnet reads + LLM) — allow headroom.
+// First-ever load runs one lazy scan (mainnet reads) — allow headroom.
 export const maxDuration = 60;
 
 // { pools: SerializedScoredPool[], updatedAt: number | null }

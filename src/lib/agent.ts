@@ -1,64 +1,24 @@
-import { z } from "zod";
-import Anthropic from "@anthropic-ai/sdk";
+import { bestPool } from "./risk";
+import { explainRoute } from "./rationale";
 import type { ScoredPool, Position, Decision, RiskTolerance } from "./types";
 
-export interface ToolDef { name: string; description: string; schema: object; validate: (raw: unknown) => any; }
-export interface LlmClient {
-  runToolLoop(system: string, user: string, tools: ToolDef[]):
-    Promise<{ toolName: string | null; input: any; text: string }>;
-}
-
-const rebalanceInput = z.object({ toPool: z.string(), amountUsdc: z.coerce.bigint() });
+// The agent's decision is deterministic: the highest-APY pool among those the
+// risk model marked eligible. This used to be an LLM tool call, but the LLM was
+// only ever asked to apply that same rule — and every tick paid for a model call
+// to do it. The rationale is composed from the scan (rationale.ts, shared with
+// the dashboard) so every decision still carries a plain-language reason.
 
 export interface DecisionContext { pools: ScoredPool[]; position: Position; tolerance: RiskTolerance; }
 
-export async function decide(llm: LlmClient, ctx: DecisionContext): Promise<Decision> {
-  const tools: ToolDef[] = [{
-    name: "rebalance",
-    description: "Move the user's USDC from the current pool into a better eligible pool.",
-    schema: { type: "object", properties: { toPool: { type: "string" }, amountUsdc: { type: "string", description: "amount in stroops (7 decimals)" } }, required: ["toPool", "amountUsdc"] },
-    validate: (raw) => rebalanceInput.parse(raw),
-  }];
-
-  const system = [
-    "You are an autonomous DeFi yield agent on Stellar.",
-    "Only move funds into pools marked eligible. Prefer the highest apyBps among eligible pools.",
-    "If the current pool is already the best eligible one, do NOT rebalance — just explain why.",
-    `User risk tolerance: ${ctx.tolerance}.`,
-  ].join(" ");
-  // Convert tvlUsdc from stroops (7 decimals) to whole USDC so the LLM reasons
-  // with the correct scale (e.g. $48.2M, not $481.8B).
-  const user = JSON.stringify({
-    position: { ...ctx.position, amountUsdc: ctx.position.amountUsdc.toString() },
-    pools: ctx.pools.map((p) => ({
-      ...p,
-      tvlUsdc: (Number(p.tvlUsdc) / 1e7).toFixed(2) + " USDC",
-    })),
-  });
-
-  const r = await llm.runToolLoop(system, user, tools);
-  if (r.toolName === "rebalance" && r.input) {
-    return { action: "rebalance", toPool: r.input.toPool, amountUsdc: r.input.amountUsdc, rationale: r.text || "rebalance" };
+export function decide(ctx: DecisionContext): Decision {
+  const best = bestPool(ctx.pools);
+  if (!best) {
+    return { action: "hold", rationale: `No pool is eligible under the ${ctx.tolerance} risk tolerance, so the agent holds.` };
   }
-  return { action: "hold", rationale: r.text || "hold" };
-}
-
-export function createAnthropicLlm(apiKey: string, model: string): LlmClient {
-  const client = new Anthropic({ apiKey });
-  return {
-    async runToolLoop(system, user, tools) {
-      const msg = await client.messages.create({
-        model, max_tokens: 1024, system,
-        tools: tools.map((t) => ({ name: t.name, description: t.description, input_schema: t.schema as any })),
-        messages: [{ role: "user", content: user }],
-      });
-      const toolUse = msg.content.find((c) => c.type === "tool_use") as any;
-      const text = msg.content.filter((c) => c.type === "text").map((c: any) => c.text).join(" ").trim();
-      if (toolUse) {
-        const def = tools.find((t) => t.name === toolUse.name);
-        return { toolName: toolUse.name, input: def ? def.validate(toolUse.input) : toolUse.input, text };
-      }
-      return { toolName: null, input: null, text };
-    },
-  };
+  if (ctx.position.poolId === best.poolId) {
+    return { action: "hold", rationale: explainRoute(best, ctx.pools, true) };
+  }
+  // amountUsdc is left unset: the orchestrator moves the current position,
+  // bounded by the per-tx and daily caps.
+  return { action: "rebalance", toPool: best.poolId, rationale: explainRoute(best, ctx.pools, false) };
 }
