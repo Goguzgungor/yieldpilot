@@ -1,6 +1,6 @@
 # Vigil: rakip analizi
 
-> **Güncel tablo başvuruda:** `submission.md` → "How Vigil relates to existing work". Bu dosya 2026-11-01'deki araştırma; sonradan bulunanlar yalnızca başvuruda var: Stenion (açık kaynak, Blend dahil 5 market için 0–100 güvenlik skoru, admin-key faktörü), Tsuna (OZ smart account üzerinde agent vault limitleri), Credora + Newton (EVM'de rating'e bağlı işlem engelleme), Policywright.
+> **Güncel tablo başvuruda:** `submission.md` → "How Vigil relates to existing work", 2026-11-02'de kaynaklarından yeniden kontrol edildi. Bu dosya 2026-11-01'deki araştırma ve bazı yerleri eskidi: Riskon artık YieldBlox'a C 58 veriyor, Sentora ve Upshift Stellar'da canlı, REAPP bir OpenZeppelin policy projesi değil, Tsuna'nın vault'ları kendi Soroban kontratları. Sonradan bulunanlar yalnızca başvuruda var: Stenion, Tsuna, Credora + Newton, Webacy'nin vault rating'leri, SCF #44 policy builder'ları (Policywright, Crediolabs.ai, Gateway.fm), OpenZeppelin Monitor ve Alterscope'un smart-wallet oturumları.
 
 **Tarih:** 2026-11-01. Aşağıdaki tüm URL'lere bu tarihte erişildi.
 **Yöntem:**
