@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useState } from "react";
 import { truncateAddress } from "./format";
 import { REPO_URL, stellarExpertUrl, X_URL } from "./links";
+import RatingsGuide, { type GuideFocus } from "./RatingsGuide";
 
 // Shape of GET /api/ratings (src/lib/vigil/types.ts PoolRating, JSON-serialized).
 interface Factor {
@@ -245,10 +246,11 @@ function poolSub(r: Rating, short: boolean): string {
 }
 
 /** One pool on the screen: a 0–100 track with the final score and, when a rule capped it, the score before. */
-function Track({ r }: { r: Rating }) {
+function Track({ r, dim }: { r: Rating; dim: boolean }) {
+  const rowClass = dim ? "rt-track-row rt-dim" : "rt-track-row";
   if (r.score === null) {
     return (
-      <div className="rt-track-row">
+      <div className={rowClass}>
         <div className="rt-track-name">
           {r.name}
           <span className="rt-track-sub">{poolSub(r, true)}</span>
@@ -264,7 +266,7 @@ function Track({ r }: { r: Rating }) {
   const uncapped = r.uncappedScore ?? score;
   const capped = uncapped > score;
   return (
-    <div className="rt-track-row">
+    <div className={rowClass}>
       <div className="rt-track-name">
         {r.name}
         <span className="rt-track-sub">{poolSub(r, true)}</span>
@@ -355,6 +357,9 @@ export default function RatingsView() {
   const [data, setData] = useState<RatingsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState<string | null>(null);
+  const [focus, setFocus] = useState<GuideFocus | null>(null);
+  const [clearSignal, setClearSignal] = useState(0);
+  const dim = (id: string) => focus !== null && !focus.ids.has(id);
 
   useEffect(() => {
     let cancelled = false;
@@ -385,18 +390,12 @@ export default function RatingsView() {
         </a>
         <h1 className="rt-title">Pool risk ratings</h1>
         <p className="rt-lede">
-          Every Blend pool on Stellar mainnet, from both the V2 and the v2.1 deployment, and the DeFindex strategies
-          that deposit into them. The grade answers one question: how safe is it to supply here? It comes from each
-          pool&rsquo;s on-chain setup: who prices its collateral and how cheaply that price can be pushed, what the
-          backstop can cover, how much of its most-borrowed asset is lent out, and supply caps. A few rules set a
-          ceiling. A pool whose backstop is below Blend&rsquo;s threshold or leaving, or one with a weak price feed,
-          is at most B; one lent against with almost no backstop (under 1% of its borrows), at most C; a missing
-          price, at most D; collateral that can be pushed profitably on the thinnest SDEX book of the last 24 hours,
-          E. A pool that never launched, or holds under $10K, is not rated (NR). Blend&rsquo;s own pool state is shown
-          separately: it decides whether you can deposit at all, and so does a backstop queue that one call would
-          turn into a freeze.
+          Every Blend pool on Stellar mainnet, from the V2 and v2.1 deployments, and the DeFindex strategies built on
+          them. Each gets a grade from A to E that answers one question: how safe is it to supply here?
         </p>
       </header>
+
+      <RatingsGuide ratings={data?.ratings ?? null} onFocus={setFocus} clearSignal={clearSignal} />
 
       {!data && !error && (
         <div className="rt-screen rt-wait">
@@ -411,7 +410,7 @@ export default function RatingsView() {
 
       {data && (
         <>
-          <section className="rt-screen" aria-label="Scores">
+          <section className="rt-screen" id="rt-scores" aria-label="Scores">
             <div className="rt-readout">
               <span>
                 {open_} of {pools.length} Blend pools accept deposits under Vigil
@@ -421,6 +420,16 @@ export default function RatingsView() {
                 <span className="rt-ghost rt-ghost--legend" /> before hard rules
               </span>
             </div>
+            {focus && (
+              <div className="rt-focus" role="status">
+                <span>
+                  Highlighted: <b>{focus.label}</b> · {focus.ids.size === 0 ? "no pool today" : `${focus.ids.size} of ${ratings.length}`}
+                </span>
+                <button type="button" onClick={() => setClearSignal((n) => n + 1)}>
+                  Show all
+                </button>
+              </div>
+            )}
             <div className="rt-scale" aria-hidden="true">
               {BAND_LABELS.map(([centre, g]) => (
                 <span key={g} style={{ left: `${centre}%` }}>
@@ -429,7 +438,7 @@ export default function RatingsView() {
               ))}
             </div>
             {ratings.map((r) => (
-              <Track key={r.poolId} r={r} />
+              <Track key={r.poolId} r={r} dim={dim(r.poolId)} />
             ))}
           </section>
 
@@ -450,7 +459,7 @@ export default function RatingsView() {
                 <Fragment key={r.poolId}>
                   <button
                     type="button"
-                    className={isOpen ? "rt-row rt-row--open" : "rt-row"}
+                    className={`rt-row${isOpen ? " rt-row--open" : ""}${dim(r.poolId) ? " rt-dim" : ""}`}
                     aria-expanded={isOpen}
                     onClick={() => setOpen(isOpen ? null : r.poolId)}
                   >
