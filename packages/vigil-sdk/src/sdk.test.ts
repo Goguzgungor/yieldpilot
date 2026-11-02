@@ -74,6 +74,20 @@ describe("RegistryClient (network mocked)", () => {
     expect(await c.getRating(POOL)).toBeNull();
   });
 
+  it("getSubmission decodes one publisher's entry, reasons hash as hex", async () => {
+    const seen: Transaction[] = [];
+    const sub = xdr.ScVal.scvMap([
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("reasons_hash"), val: xdr.ScVal.scvBytes(Buffer.alloc(32, 0xab)) }),
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("score"), val: xdr.ScVal.scvU32(57) }),
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("timestamp"), val: xdr.ScVal.scvU64(xdr.Uint64.fromString("1000")) }),
+    ]);
+    const c = new RegistryClient(REG, serverReturning(sub, seen), PASS, reader);
+    expect(await c.getSubmission(POOL, reader)).toEqual({ score: 57, timestamp: 1000n, reasonsHash: "ab".repeat(32) });
+    const call = (seen[0].operations[0] as unknown as { func: xdr.HostFunction }).func.invokeContract();
+    expect(call.functionName().toString()).toBe("get_submission");
+    expect(await new RegistryClient(REG, serverReturning(xdr.ScVal.scvVoid()), PASS, reader).getSubmission(POOL, reader)).toBeNull();
+  });
+
   it("depositAllowed mirrors the guard's checks", async () => {
     const c = new RegistryClient(REG, serverReturning(rating), PASS, reader);
     expect((await c.depositAllowed(POOL, 60, 3600n, 2000n)).allowed).toBe(true);

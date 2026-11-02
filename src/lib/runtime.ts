@@ -30,7 +30,8 @@ import {
 } from "./serialize";
 import type { Position, ScoredPool, Decision, YieldSource } from "./types";
 import { computeLiveRatings, type RatingsJson } from "./vigil/service";
-import { nextRunIndex, packRun, publishRatings, unpackRun, type PublishOutcome } from "./vigil/publish";
+import { splitBooks } from "./vigil/audit";
+import { nextBookIndex, nextRunIndex, packRun, publishRatings, unpackRun, type PublishOutcome } from "./vigil/publish";
 import { gateByVigil, vigilCandidatePools, type VigilVerdict } from "./vigilGate";
 
 /** Latest agent decision exposed to the UI (chosen pool + rationale + action). */
@@ -822,12 +823,25 @@ export async function getLastPublish(): Promise<LastPublish | null> {
   return raw ? (JSON.parse(raw) as LastPublish) : null;
 }
 
-/** Keep the run's input (what each reasonsHash covers), keyed by the computedAt signed on-chain. */
+/**
+ * Keep the run's input (what each reasonsHash covers), keyed by the computedAt
+ * signed on-chain. Its order books are stored once each by hash (vigilBook:<hash>),
+ * since one book appears in several pools and, through the 24 h depth window,
+ * in the runs of a day; a book goes when no archived run names it.
+ */
 async function archiveRun(rt: Runtime, data: RatingsJson): Promise<void> {
+  const { run, books } = splitBooks(data);
   const raw = await rt.db.getKV("vigilRunIndex");
   const { index, dropped } = nextRunIndex(raw ? (JSON.parse(raw) as number[]) : [], data.computedAt, Math.floor(Date.now() / 1000));
-  await rt.db.setKV(`vigilRun:${data.computedAt}`, packRun(JSON.stringify(data)));
+  const bookRaw = await rt.db.getKV("vigilBookIndex");
+  const hashes = Object.keys(books);
+  const next = nextBookIndex(bookRaw ? (JSON.parse(bookRaw) as Record<string, number>) : {}, hashes, data.computedAt, index[0]);
+  for (const h of next.write) await rt.db.setKV(`vigilBook:${h}`, packRun(JSON.stringify(books[h])));
+  // A cache written before the books were kept has none; it is stored as it was.
+  await rt.db.setKV(`vigilRun:${data.computedAt}`, packRun(JSON.stringify(data.books ? { ...run, bookHashes: hashes } : run)));
   for (const t of dropped) await rt.db.setKV(`vigilRun:${t}`, "");
+  for (const h of next.drop) await rt.db.setKV(`vigilBook:${h}`, "");
+  await rt.db.setKV("vigilBookIndex", JSON.stringify(next.index));
   await rt.db.setKV("vigilRunIndex", JSON.stringify(index));
 }
 
@@ -837,8 +851,20 @@ export async function listArchivedRuns(): Promise<number[]> {
   return raw ? (JSON.parse(raw) as number[]) : [];
 }
 
-/** An archived run's JSON, or null. */
+/** An archived run's JSON with its order books put back, or null. Runs archived before the books were kept come back as stored. */
 export async function getArchivedRun(computedAt: number): Promise<string | null> {
-  const packed = await getRuntime().db.getKV(`vigilRun:${computedAt}`);
-  return packed ? unpackRun(packed) : null;
+  const db = getRuntime().db;
+  const packed = await db.getKV(`vigilRun:${computedAt}`);
+  if (!packed) return null;
+  const json = unpackRun(packed);
+  const { bookHashes, ...run } = JSON.parse(json) as { bookHashes?: string[] };
+  if (!bookHashes) return json;
+  const books: Record<string, unknown> = {};
+  await Promise.all(
+    bookHashes.map(async (h) => {
+      const b = await db.getKV(`vigilBook:${h}`);
+      if (b) books[h] = JSON.parse(unpackRun(b));
+    }),
+  );
+  return JSON.stringify({ ...run, books });
 }

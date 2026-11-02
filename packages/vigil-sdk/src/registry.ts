@@ -13,6 +13,14 @@ export interface Rating {
   timestamp: bigint;
 }
 
+/** One publisher's latest entry for a pool. */
+export interface Submission {
+  score: number;
+  timestamp: bigint;
+  /** hex */
+  reasonsHash: string;
+}
+
 export interface RatingInput {
   pool: string;
   score: number;
@@ -70,6 +78,12 @@ export class RegistryClient {
   async getRating(pool: string): Promise<Rating | null> {
     const r = (await this.read("get_rating", addr(pool))) as { score: number; publishers: number; timestamp: bigint } | null | undefined;
     return r ? { score: Number(r.score), publishers: Number(r.publishers), timestamp: BigInt(r.timestamp) } : null;
+  }
+
+  /** `publisher`'s latest submission for `pool`, or null. */
+  async getSubmission(pool: string, publisher: string): Promise<Submission | null> {
+    const r = (await this.read("get_submission", addr(pool), addr(publisher))) as { score: number; timestamp: bigint; reasons_hash: Uint8Array } | null | undefined;
+    return r ? { score: Number(r.score), timestamp: BigInt(r.timestamp), reasonsHash: Buffer.from(r.reasons_hash).toString("hex") } : null;
   }
 
   async publishers(): Promise<string[]> {

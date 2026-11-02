@@ -2,6 +2,7 @@
  * Vigil engine orchestration: discover → snapshot → rate (Blend) → rate (DeFindex).
  * All I/O is injected so the whole pipeline runs offline in tests.
  */
+import { archiveSnapshot, type Books } from "./audit";
 import { rateDefindexStrategy, type DefindexStrategyInput } from "./defindex";
 import { discoverBlendPools, type DiscoveryResult, type PoolIdSource, type PoolVerifier } from "./discovery";
 import { ENGINE_VERSION, ratePool, type RateOptions } from "./score";
@@ -34,6 +35,8 @@ export interface EngineResult {
   defindex: PoolRating[];
   failures: { id: string; error: string }[];
   snapshots: Record<string, PoolSnapshot>;
+  /** What each DeFindex strategy was rated from. */
+  strategies: DefindexStrategyInput[];
 }
 
 export async function runVigil(
@@ -61,6 +64,7 @@ export async function runVigil(
 
   const byId = Object.fromEntries(pools.map((p) => [p.poolId, p]));
   const defindex: PoolRating[] = [];
+  const strategies: DefindexStrategyInput[] = [];
   for (const s of opts.defindexStrategies ?? []) {
     const onchain = deps.readStrategy ? await deps.readStrategy(s.strategyId).catch(() => null) : null;
     const poolId = onchain?.pool || s.blendPoolId;
@@ -73,15 +77,22 @@ export async function runVigil(
       onchainAssetId: onchain?.asset ?? null,
       tvlUsd: tvlUsd !== null ? Math.round(tvlUsd * 100) / 100 : null,
     };
+    strategies.push(input);
     defindex.push(rateDefindexStrategy(input, byId, snapshots));
   }
 
   const computedAt = opts.now ?? Math.max(0, ...Object.values(snapshots).map((s) => s.asOf.timestamp));
-  return { engineVersion: ENGINE_VERSION, computedAt, discovery, pools, defindex, failures, snapshots };
+  return { engineVersion: ENGINE_VERSION, computedAt, discovery, pools, defindex, failures, snapshots, strategies };
 }
 
-/** JSON-ready shape written by scripts/vigil-ratings.ts (snapshots omitted). */
+/**
+ * JSON-ready shape of a run (scripts/vigil-ratings.ts, the /api/ratings cache,
+ * the run archive). `inputs`, `strategies` and `books` are everything the
+ * ratings were computed from: see audit.ts.
+ */
 export function toRatingsJson(r: EngineResult) {
+  const books: Books = {};
+  const inputs = Object.fromEntries(Object.entries(r.snapshots).map(([id, s]) => [id, archiveSnapshot(s, books)]));
   return {
     engineVersion: r.engineVersion,
     computedAt: r.computedAt,
@@ -96,49 +107,10 @@ export function toRatingsJson(r: EngineResult) {
       fallbackOnly: r.discovery.fallbackOnly,
     },
     ratings: [...r.pools, ...r.defindex],
-    /** Compact per-pool inputs behind each rating (for audit / re-hashing). */
-    inputs: Object.fromEntries(
-      Object.entries(r.snapshots).map(([id, s]) => [
-        id,
-        {
-          name: s.name,
-          status: s.status,
-          oracleId: s.oracleId,
-          oracleKind: s.oracleKind,
-          asOf: s.asOf,
-          deployment: s.deployment,
-          backstopId: s.backstopId,
-          backstop: s.backstop,
-          dataGaps: s.dataGaps,
-          reserves: s.reserves.map((x) => ({
-            symbol: x.symbol,
-            assetId: x.assetId,
-            cFactor: x.cFactor,
-            lFactor: x.lFactor,
-            maxUtil: x.maxUtil,
-            supplyCap: x.supplyCap,
-            enabled: x.enabled,
-            supplied: x.supplied,
-            borrowed: x.borrowed,
-            priceUsd: x.priceUsd,
-            priceTimestamp: x.priceTimestamp,
-            source: x.source,
-          })),
-          dexDepth: Object.fromEntries(
-            Object.entries(s.dexDepth).map(([k, v]) => [k, { levels: v.asks.length, truncated: v.truncated, bestAsk: v.asks[0]?.price ?? null, source: v.source }]),
-          ),
-          ...(s.dexDepthHistory
-            ? {
-                dexDepthHistory: Object.fromEntries(
-                  Object.entries(s.dexDepthHistory).map(([k, xs]) => [
-                    k,
-                    xs.map((x) => ({ sampledAt: x.sampledAt, refPriceUsd: x.refPriceUsd, levels: x.asks.length, truncated: x.truncated })),
-                  ]),
-                ),
-              }
-            : {}),
-        },
-      ]),
-    ),
+    /** Each pool's snapshot, with its order books replaced by their hash. */
+    inputs,
+    strategies: r.strategies,
+    /** The order books, by sha256Canonical. */
+    books,
   };
 }

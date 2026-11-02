@@ -8,9 +8,11 @@ export const dynamic = "force-dynamic";
  * 90 days, so anyone can re-hash a published rating.
  *
  *   (no params)      { runs: computedAt[], lastPublish }  — ascending
- *   ?at=<computedAt> that run's ratings JSON, with the per-pool inputs each
- *                    reasonsHash covers. computedAt is the timestamp the
- *                    registry returns for the rating.
+ *   ?at=<computedAt> that run's ratings JSON with everything it was computed
+ *                    from (inputs, strategies, books), so each reasonsHash can be
+ *                    recomputed and each pool re-rated: scripts/vigil-verify.ts.
+ *                    computedAt is the timestamp the registry returns for the
+ *                    rating. A run archived before the books were kept comes back without them.
  */
 export async function GET(req: Request) {
   const at = new URL(req.url).searchParams.get("at");

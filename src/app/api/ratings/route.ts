@@ -11,11 +11,13 @@ export const maxDuration = 300;
  * an hour is still served at once and recomputed after the response.
  *
  *   ?refresh=1  recompute now (only if the cache is older than 5 minutes)
- *   ?inputs=1   include the per-pool inputs behind each rating (for audit /
- *               re-hashing); omitted by default to keep the payload small
+ *   ?inputs=1   include everything the ratings were computed from (each pool's
+ *               snapshot, the DeFindex strategy inputs, the order books by
+ *               hash; see lib/vigil/audit.ts); omitted by default to keep the
+ *               payload small
  *
  * Response: { engineVersion, computedAt, cachedAt, stale, network, coverage,
- *             ratings: PoolRating[], methodology, inputs? }
+ *             ratings: PoolRating[], methodology, inputs?, strategies?, books? }
  * Scores are 0..100, higher = safer; `reasonsHash` is what publishers sign
  * into the RiskRegistry.
  */
@@ -28,13 +30,13 @@ export async function GET(req: Request) {
     } else if (result.expired) {
       after(refreshExpiredRatings);
     }
-    const { inputs, ...rest } = result.data;
+    const { inputs, strategies, books, ...rest } = result.data;
     return NextResponse.json({
       ...rest,
       cachedAt: result.cachedAt,
       stale: result.stale,
       methodology: "https://github.com/Goguzgungor/yieldpilot/blob/feat/yieldseeker-mvp/docs/vigil/methodology.md",
-      ...(url.searchParams.get("inputs") === "1" ? { inputs } : {}),
+      ...(url.searchParams.get("inputs") === "1" ? { inputs, strategies, books } : {}),
     });
   } catch (e) {
     return NextResponse.json({ error: `ratings unavailable: ${(e as Error).message}` }, { status: 502 });

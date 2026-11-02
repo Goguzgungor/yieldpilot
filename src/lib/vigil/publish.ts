@@ -144,7 +144,7 @@ export async function publishRatings(opts: {
 /** Every published run's input (with what each reasonsHash covers) is kept this long. */
 export const RUN_ARCHIVE_DAYS = 90;
 
-/** A run as stored: gzip + base64 of its JSON (~14 KB per run). */
+/** A run or an order book as stored: gzip + base64 of its JSON. */
 export const packRun = (json: string): string => gzipSync(Buffer.from(json)).toString("base64");
 export const unpackRun = (packed: string): string => gunzipSync(Buffer.from(packed, "base64")).toString();
 
@@ -153,4 +153,23 @@ export function nextRunIndex(index: number[], computedAt: number, nowSec: number
   const cutoff = nowSec - RUN_ARCHIVE_DAYS * 86_400;
   const all = [...new Set([...index, computedAt])].sort((a, b) => a - b);
   return { index: all.filter((t) => t >= cutoff), dropped: all.filter((t) => t < cutoff) };
+}
+
+/**
+ * The order-book index after archiving a run at `computedAt` that names `hashes`
+ * (book hash → the last run that named it): which books to write (not stored
+ * yet) and which to drop (no run from `oldestKept` on names them).
+ */
+export function nextBookIndex(
+  index: Record<string, number>,
+  hashes: string[],
+  computedAt: number,
+  oldestKept: number,
+): { index: Record<string, number>; write: string[]; drop: string[] } {
+  const out = { ...index };
+  const write = hashes.filter((h) => !(h in out));
+  for (const h of hashes) out[h] = Math.max(out[h] ?? 0, computedAt);
+  const drop = Object.keys(out).filter((h) => out[h] < oldestKept);
+  for (const h of drop) delete out[h];
+  return { index: out, write, drop };
 }

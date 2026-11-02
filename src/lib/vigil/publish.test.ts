@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { execPoolStandIn, nextRunIndex, packRun, registryInputs, RUN_ARCHIVE_DAYS, unpackRun, type PublishableRating } from "./publish";
+import { execPoolStandIn, nextBookIndex, nextRunIndex, packRun, registryInputs, RUN_ARCHIVE_DAYS, unpackRun, type PublishableRating } from "./publish";
 
 const rating = (poolId: string, o: Partial<PublishableRating> = {}): PublishableRating => ({
   poolId,
@@ -48,5 +48,12 @@ describe("run archive", () => {
     const old = now - RUN_ARCHIVE_DAYS * 86_400 - 1;
     expect(nextRunIndex([old, now - 3600], now - 1800, now)).toEqual({ index: [now - 3600, now - 1800], dropped: [old] });
     expect(nextRunIndex([now - 1800], now - 1800, now).index).toEqual([now - 1800]);
+  });
+
+  it("stores a book once, remembers the last run that named it, and lets go of books no kept run names", () => {
+    const out = nextBookIndex({ old: 10, shared: 10, kept: 50 }, ["shared", "new"], 100, 40);
+    expect(out.write).toEqual(["new"]);
+    expect(out.drop).toEqual(["old"]);
+    expect(out.index).toEqual({ shared: 100, kept: 50, new: 100 });
   });
 });

@@ -1,5 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { Keypair } from "@stellar/stellar-sdk";
+import { packRun, unpackRun } from "./vigil/publish";
 
 // The mainnet read is replaced: these tests cover only how /api/ratings uses the cache.
 const compute = vi.fn();
@@ -100,7 +101,9 @@ describe("publishing", () => {
   const secret = Keypair.random().secret();
 
   it("archives the run under the computedAt it signs, records the outcome, and holds a lease", async () => {
-    await kv().setKV("vigilRatings", JSON.stringify({ ...run("x"), computedAt, inputs: { P: { supplied: 1 } } }));
+    const inputs = { P: { dexDepth: { A: { asksHash: "h-a", levels: 1 } } } };
+    const books = { "h-a": [{ price: 1, amount: 2 }] };
+    await kv().setKV("vigilRatings", JSON.stringify({ ...run("x"), computedAt, inputs, books }));
     await kv().setKV("vigilRatingsAt", String(Date.now() - 60_000));
     await kv().setKV("vigilPublishAt", "0");
     publish.mockResolvedValue({ engineVersion: "vigil-risk-v2.3.0", computedAt, published: 9, skippedNotRated: 8, execPool: "", txs: ["h1", "h2"], failures: [] });
@@ -110,11 +113,32 @@ describe("publishing", () => {
     expect(publish.mock.calls[0][0]).toMatchObject({ computedAt, registryId: "CB4LXLCCD7YDND5FBVXPKPHUQMF7JFSDRVXHG7ZZTWWNPJ6WDCXDNDF6", heldPoolId: null });
     expect(out).toMatchObject({ published: 9, txs: ["h1", "h2"] });
     expect(await runtime.listArchivedRuns()).toEqual([computedAt]);
-    expect(JSON.parse((await runtime.getArchivedRun(computedAt))!).inputs).toEqual({ P: { supplied: 1 } });
+    // The book is stored once on its own and put back when the run is read.
+    expect(await kv().getKV(`vigilRun:${computedAt}`)).not.toBeNull();
+    expect(JSON.parse(unpackRun((await kv().getKV(`vigilRun:${computedAt}`))!))).not.toHaveProperty("books");
+    expect(JSON.parse(unpackRun((await kv().getKV("vigilBook:h-a"))!))).toEqual(books["h-a"]);
+    expect(JSON.parse((await runtime.getArchivedRun(computedAt))!)).toMatchObject({ inputs, books });
     expect((await runtime.getLastPublish())?.txs).toEqual(["h1", "h2"]);
 
     expect(await runtime.publishVigilRatings(secret)).toBeNull(); // within the lease
     expect(publish).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears the books only runs past the 90 days named", async () => {
+    const old = computedAt - 91 * 86_400;
+    await kv().setKV("vigilRunIndex", JSON.stringify([old]));
+    await kv().setKV(`vigilRun:${old}`, packRun("{}"));
+    await kv().setKV("vigilBook:h-old", packRun("[]"));
+    await kv().setKV("vigilBookIndex", JSON.stringify({ "h-old": old, "h-a": old }));
+    await kv().setKV("vigilRatings", JSON.stringify({ ...run("y"), computedAt: computedAt + 1, inputs: {}, books: { "h-a": [{ price: 1, amount: 2 }] } }));
+    await kv().setKV("vigilRatingsAt", String(Date.now()));
+    await kv().setKV("vigilPublishAt", "0");
+    publish.mockResolvedValue({ engineVersion: "v", computedAt, published: 1, skippedNotRated: 0, execPool: "", txs: [], failures: [] });
+    await runtime.publishVigilRatings(secret);
+    expect(await runtime.listArchivedRuns()).not.toContain(old);
+    expect(await kv().getKV(`vigilRun:${old}`)).toBe("");
+    expect(await kv().getKV("vigilBook:h-old")).toBe("");
+    expect(JSON.parse((await kv().getKV("vigilBookIndex"))!)).toEqual({ "h-a": computedAt + 1 });
   });
 
   it("recomputes a cache over 5 minutes old before publishing", async () => {
