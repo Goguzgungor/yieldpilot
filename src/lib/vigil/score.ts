@@ -17,9 +17,11 @@ import {
   type RatingFactor,
   type ReserveSnapshot,
   type ReserveYield,
+  type DexDepth,
+  type DexDepthSample,
 } from "./types";
 
-export const ENGINE_VERSION = "vigil-risk-v2.2.0";
+export const ENGINE_VERSION = "vigil-risk-v2.3.0";
 
 /**
  * Factor weights (sum = 1). v2.1 dropped the pool_status factor: Blend's
@@ -94,6 +96,8 @@ export const GRADE_BANDS: ReadonlyArray<readonly [number, Grade]> = [
 export const HARD_CAPS = {
   /** backstop below Blend's threshold, or ≥30% of it queued to leave ⇒ grade ≤ B */
   uninsured: 79,
+  /** borrowed against with under THRESHOLDS.minFirstLossCoverage of first-loss capital ⇒ grade ≤ C */
+  noFirstLossCapital: 64,
   /** collateral with stale/missing price ⇒ grade ≤ D */
   collateralPriceUnavailable: 49,
   /** SDEX-priced collateral with a profitable manipulation (rho < 1) ⇒ grade E */
@@ -121,6 +125,19 @@ export const THRESHOLDS = {
    * is leaving, so it is not counted as reliable first-loss capital (HR7).
    */
   backstopQueueOnIce: 0.3,
+  /**
+   * Queue share at which update_status FREEZES a pool (status.rs): 60% for an
+   * Active or On_Ice pool, 75% for an Admin_On_Ice one. Anyone can make that
+   * call, so such a pool is one transaction from refusing deposits (HR8).
+   */
+  backstopQueueFrozen: 0.6,
+  adminOnIceQueueFrozen: 0.75,
+  /**
+   * Effective backstop / liabilities under which lenders have no first-loss
+   * capital in front of them: a bad debt of 1% of the borrows already exceeds
+   * the backstop (HR9).
+   */
+  minFirstLossCoverage: 0.01,
   /** sourceQuality at or above this is a robust price source (RedStone = 85, Reflector CEX/FX = 95). */
   robustSourceQuality: 85,
   /** Below this many USD of liabilities the pool has nothing at risk. */
@@ -133,6 +150,11 @@ export const THRESHOLDS = {
    * and a high score would only say that nothing is there.
    */
   minRatedTvlUsd: 10_000,
+  /**
+   * The manipulation factor uses the thinnest SDEX book seen over this window,
+   * not one read, so a rating does not flip as asks come and go (v2.3).
+   */
+  depthWindowSec: 86_400,
   /** Comet backstop token is 80/20 BLND/USDC ⇒ spot value = 5 × USDC (backstop/src/backstop/pool.rs). */
   cometUsdcMultiplier: 5,
 } as const;
@@ -258,6 +280,30 @@ export interface ManipulationAssessment {
   note: string;
 }
 
+/**
+ * A past book rescaled to today's price: each level keeps its USD size and its
+ * distance from the price, so pushing the price ×M costs what it would have
+ * cost then.
+ */
+export function rescaleSample(sample: DexDepthSample, priceUsd: number): DexDepth {
+  const k = priceUsd / sample.refPriceUsd;
+  if (!(k > 0) || !Number.isFinite(k)) return sample;
+  return { ...sample, asks: sample.asks.map((a) => ({ price: a.price * k, amount: a.amount / k })) };
+}
+
+/** The current book plus the earlier books still inside the window, oldest first. */
+function booksInWindow(s: PoolSnapshot, assetId: string, priceUsd: number): { depth: DexDepth; at: number }[] {
+  const from = s.asOf.timestamp - THRESHOLDS.depthWindowSec;
+  const past = (s.dexDepthHistory?.[assetId] ?? [])
+    .filter((x) => x.sampledAt >= from && x.sampledAt < s.asOf.timestamp && x.refPriceUsd > 0)
+    .sort((a, b) => a.sampledAt - b.sampledAt)
+    .map((x) => ({ depth: rescaleSample(x, priceUsd), at: x.sampledAt }));
+  const now = s.dexDepth[assetId];
+  return now ? [...past, { depth: now, at: s.asOf.timestamp }] : past;
+}
+
+const utcTime = (t: number) => new Date(t * 1000).toISOString().slice(11, 16);
+
 export function assessSdexCollateral(
   s: PoolSnapshot,
   d: Derived[],
@@ -270,28 +316,42 @@ export function assessSdexCollateral(
       continue;
     }
     if (!x.isCollateral || !SDEX_PRICED_KINDS.has(x.r.source.kind) || !x.priced) continue;
-    const depth = s.dexDepth[x.r.assetId];
-    if (!depth) {
+    const books = booksInWindow(s, x.r.assetId, x.r.priceUsd as number);
+    if (!books.length) {
       out.push({ assetId: x.r.assetId, symbol: x.r.symbol, result: null, score: 50, note: `${x.r.symbol}: SDEX-priced but order book unavailable` });
       continue;
     }
     const others = d.filter((o) => o !== x && o.isBorrowable && o.availableUsd > 0);
     const availableUsd = others.reduce((a, o) => a + o.availableUsd, 0);
     const avgLFactor = availableUsd > 0 ? others.reduce((a, o) => a + o.availableUsd * o.r.lFactor, 0) / availableUsd : 0;
-    const result = assessManipulation(
-      {
-        priceUsd: x.r.priceUsd as number,
-        cFactor: x.r.cFactor,
-        capHeadroomTokens: x.r.supplyCap === null ? null : Math.max(0, x.r.supplyCap - x.r.supplied),
-        availableUsd,
-        avgLFactor,
-        depth,
-        maxDevPct: x.r.source.maxDevPct,
-        resolutionSec: x.r.source.resolutionSec,
-      },
-      params,
-    );
-    const score = rhoToScore(result.rho, result.costIsLowerBound);
+    // The thinnest book in the window sets the factor; on a tie the latest one.
+    let worst: { result: ManipulationResult; score: number; at: number } | null = null;
+    for (const b of books) {
+      const result = assessManipulation(
+        {
+          priceUsd: x.r.priceUsd as number,
+          cFactor: x.r.cFactor,
+          capHeadroomTokens: x.r.supplyCap === null ? null : Math.max(0, x.r.supplyCap - x.r.supplied),
+          availableUsd,
+          avgLFactor,
+          depth: b.depth,
+          maxDevPct: x.r.source.maxDevPct,
+          resolutionSec: x.r.source.resolutionSec,
+        },
+        params,
+      );
+      const score = rhoToScore(result.rho, result.costIsLowerBound);
+      const worse =
+        !worst ||
+        score < worst.score ||
+        (score === worst.score && (result.rho ?? Infinity) <= (worst.result.rho ?? Infinity));
+      if (worse) worst = { result, score, at: b.at };
+    }
+    const { result, score, at } = worst!;
+    const window =
+      books.length > 1
+        ? `; thinnest of ${books.length} books in ${THRESHOLDS.depthWindowSec / 3600} h${at === s.asOf.timestamp ? " (the current one)" : `, read ${utcTime(at)} UTC`}`
+        : "";
     const note =
       result.rho === null
         ? `${x.r.symbol}: no profitable leverage (nothing borrowable or c_factor too low)`
@@ -299,7 +359,7 @@ export function assessSdexCollateral(
             result.costIsLowerBound ? " (lower bound, book truncated)" : ""
           } + ${fmtUsd(result.collateralCostUsd)} collateral to borrow ${fmtUsd(result.extractableUsd)} (rho=${result.rho.toPrecision(3)}; hold ${result.roundsToHold} round${
             result.roundsToHold > 1 ? "s" : ""
-          }${result.minHoldSeconds ? ` ≈${result.minHoldSeconds}s` : ""}, max_dev=${x.r.source.maxDevPct === undefined ? "unknown" : `${x.r.source.maxDevPct}%`})`;
+          }${result.minHoldSeconds ? ` ≈${result.minHoldSeconds}s` : ""}, max_dev=${x.r.source.maxDevPct === undefined ? "unknown" : `${x.r.source.maxDevPct}%`}${window})`;
     out.push({ assetId: x.r.assetId, symbol: x.r.symbol, result, score, note });
   }
   return out;
@@ -400,18 +460,20 @@ export function concentrationFactor(d: Derived[]): FactorCalc {
 
 // ── main entry ───────────────────────────────────────────────────────────────
 
-/** The B band's floor: the soft ceiling only compresses the part of a score above it. */
+/** The B and C bands' floors: a soft ceiling only compresses the part of a score above its floor. */
 const B_FLOOR = 65;
+const C_FLOOR = 50;
 
 /**
  * The soft "at most B" ceiling used for uninsured pools (HR7) and weak price
  * feeds (HR6): scores above 65 are compressed linearly into 65..79, so the
  * grade tops out at B while pools keep their order (a hard min(score, 79)
- * would flatten every such pool to the same number).
+ * would flatten every such pool to the same number). HR9's "at most C" is the
+ * same with floor 50 and cap 64.
  */
-export function softCeiling(score: number, cap: number = HARD_CAPS.uninsured): number {
-  if (score <= B_FLOOR) return score;
-  return B_FLOOR + ((score - B_FLOOR) * (cap - B_FLOOR)) / (100 - B_FLOOR);
+export function softCeiling(score: number, cap: number = HARD_CAPS.uninsured, floor: number = B_FLOOR): number {
+  if (score <= floor) return score;
+  return floor + ((score - floor) * (cap - floor)) / (100 - floor);
 }
 
 /**
@@ -437,6 +499,34 @@ export function backstopUnreliable(s: PoolSnapshot): string | null {
   if (b.q4wPct >= THRESHOLDS.backstopQueueOnIce)
     return `${pct(b.q4wPct)} of the backstop is queued for withdrawal, at or past the ${pct(THRESHOLDS.backstopQueueOnIce)} at which Blend puts a pool On_Ice`;
   return null;
+}
+
+/**
+ * Why Blend's permissionless update_status would freeze this pool now (HR8),
+ * or null: its withdrawal queue is at or past the freeze share for its status.
+ * Admin statuses 0, 4 and 6 never move to Frozen this way.
+ */
+export function pendingFreeze(s: PoolSnapshot): string | null {
+  const b = s.backstop;
+  if (!b) return null;
+  const limit = s.status === 1 || s.status === 3 ? THRESHOLDS.backstopQueueFrozen : s.status === 2 ? THRESHOLDS.adminOnIceQueueFrozen : null;
+  if (limit === null || b.q4wPct < limit) return null;
+  return `${pct(b.q4wPct)} of the backstop is queued for withdrawal, past the ${pct(limit)} at which Blend's update_status freezes an ${STATUS_LABELS[s.status]} pool; anyone can make that call`;
+}
+
+/**
+ * Why lenders have no first-loss capital in front of them (HR9), or null: the
+ * pool has material borrows and its effective backstop (after the queue)
+ * covers less than THRESHOLDS.minFirstLossCoverage of them.
+ */
+export function firstLossShortfall(s: PoolSnapshot, d: Derived[]): string | null {
+  const liabilities = d.reduce((a, x) => a + x.borrowedUsd, 0);
+  if (liabilities < THRESHOLDS.minLiabilitiesUsd) return null;
+  const b = s.backstop;
+  const effective = b ? b.usdc * THRESHOLDS.cometUsdcMultiplier * (1 - clamp(b.q4wPct, 0, 1)) : 0;
+  const coverage = effective / liabilities;
+  if (coverage >= THRESHOLDS.minFirstLossCoverage) return null;
+  return `backstop ${fmtUsd(effective)} effective${b ? "" : " (no data)"} covers ${pct(coverage)} of ${fmtUsd(liabilities)} borrowed, under ${pct(THRESHOLDS.minFirstLossCoverage)}: lenders carry the first loss`;
 }
 
 export function ratePool(s: PoolSnapshot, opts: RateOptions = {}): PoolRating {
@@ -466,6 +556,12 @@ export function ratePool(s: PoolSnapshot, opts: RateOptions = {}): PoolRating {
     eligible = false;
     hardRules.push(`HR1 status ${s.status} (${STATUS_LABELS[s.status] ?? "unknown"}): Blend does not accept deposits ⇒ not eligible`);
   }
+  // HR8: deposits still open, but one permissionless call closes them.
+  const freezing = pendingFreeze(s);
+  if (freezing) {
+    eligible = false;
+    hardRules.push(`HR8 ${freezing} ⇒ not eligible`);
+  }
   if (fresh.priceProblems.length) {
     eligible = false;
     score = Math.min(score, HARD_CAPS.collateralPriceUnavailable);
@@ -483,17 +579,21 @@ export function ratePool(s: PoolSnapshot, opts: RateOptions = {}): PoolRating {
     score = Math.min(score, HARD_CAPS.unverifiableCollateralSource);
     hardRules.push(`HR5 collateral price source unidentifiable (${opaque.map((x) => x.r.symbol).join(", ")}) ⇒ not eligible, grade ≤ C`);
   }
-  // HR6 / HR7 share one soft ceiling, applied once even when both hold.
-  const uninsured = backstopUnreliable(s);
+  // HR6 / HR7 share one soft ceiling, applied once even when both hold. HR9
+  // is the stricter one (at most C) and says what HR7 would about the backstop.
+  const noFirstLoss = firstLossShortfall(s, d);
+  const uninsured = noFirstLoss ? null : backstopUnreliable(s);
   const weakColl = weakCollateral(d, manip);
-  if ((uninsured || weakColl.length) && score > B_FLOOR) {
+  const weakRule = () =>
+    `HR6 collateral priced by a weak source (${weakColl.map((x) => `${x.r.symbol} ← ${x.r.source.kind}`).join(", ")}) ⇒ at most B (65+ compressed into 65–79)`;
+  if (noFirstLoss && score > C_FLOOR) {
+    score = softCeiling(score, HARD_CAPS.noFirstLossCapital, C_FLOOR);
+    hardRules.push(`HR9 ${noFirstLoss} ⇒ at most C (50+ compressed into 50–64)`);
+    if (weakColl.length) hardRules.push(weakRule());
+  } else if ((uninsured || weakColl.length) && score > B_FLOOR) {
     score = softCeiling(score);
     if (uninsured) hardRules.push(`HR7 ${uninsured} ⇒ at most B (65+ compressed into 65–79)`);
-    if (weakColl.length) {
-      hardRules.push(
-        `HR6 collateral priced by a weak source (${weakColl.map((x) => `${x.r.symbol} ← ${x.r.source.kind}`).join(", ")}) ⇒ at most B (65+ compressed into 65–79)`,
-      );
-    }
+    if (weakColl.length) hardRules.push(weakRule());
   }
   score = Math.round(clamp(score));
   if (score < 50 && eligible) {
@@ -513,8 +613,8 @@ export function ratePool(s: PoolSnapshot, opts: RateOptions = {}): PoolRating {
         : undefined;
   if (notRated) {
     eligible = false;
-    // Ceilings and the score floor (HR4, HR6, HR7) shape a score; with no score they say nothing.
-    for (let i = hardRules.length - 1; i >= 0; i--) if (/^HR[467] /.test(hardRules[i])) hardRules.splice(i, 1);
+    // Ceilings and the score floor (HR4, HR6, HR7, HR9) shape a score; with no score they say nothing.
+    for (let i = hardRules.length - 1; i >= 0; i--) if (/^HR[4679] /.test(hardRules[i])) hardRules.splice(i, 1);
     hardRules.unshift(`NR not rated: ${notRated} ⇒ no grade, not eligible`);
   }
   const finalScore: number | null = notRated ? null : score;
@@ -598,6 +698,16 @@ export function hashInputs(s: PoolSnapshot): unknown {
     dexDepth: Object.keys(s.dexDepth)
       .sort()
       .map((k) => ({ assetId: k, truncated: s.dexDepth[k].truncated, asksHash: sha256Canonical(s.dexDepth[k].asks) })),
+    ...(s.dexDepthHistory && Object.keys(s.dexDepthHistory).length
+      ? {
+          dexDepthHistory: Object.keys(s.dexDepthHistory)
+            .sort()
+            .map((k) => ({
+              assetId: k,
+              samples: s.dexDepthHistory![k].map((x) => ({ sampledAt: x.sampledAt, refPriceUsd: x.refPriceUsd, truncated: x.truncated, asksHash: sha256Canonical(x.asks) })),
+            })),
+        }
+      : {}),
     dataGaps: s.dataGaps,
   };
 }

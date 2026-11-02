@@ -119,6 +119,14 @@ const RULES: Array<{ code: string; text: (rule: string) => string }> = [
         : "Blend has closed deposits in this pool",
   },
   {
+    code: "HR8",
+    text: () => "Its backstop is leaving: one update_status call, which anyone can make, would freeze the pool",
+  },
+  {
+    code: "HR9",
+    text: () => "Lent against with no first-loss capital: the backstop covers under 1% of the borrows, so at most C",
+  },
+  {
     code: "HR7",
     text: (rule) =>
       rule.includes("queued for withdrawal")
@@ -374,9 +382,12 @@ export default function RatingsView() {
           that deposit into them. The grade answers one question: how safe is it to supply here? It comes from each
           pool&rsquo;s on-chain setup: who prices its collateral and how cheaply that price can be pushed, what the
           backstop can cover, how much of its most-borrowed asset is lent out, and supply caps. A few rules set a
-          ceiling. An uninsured pool, or one with a weak price feed, is at most B; a missing price, at most D;
-          collateral that can be profitably manipulated, E. A pool that never launched, or holds under $10K, is not
-          rated (NR). Blend&rsquo;s own pool state is shown separately: it decides whether you can deposit at all.
+          ceiling. A pool whose backstop is below Blend&rsquo;s threshold or leaving, or one with a weak price feed,
+          is at most B; one lent against with almost no backstop (under 1% of its borrows), at most C; a missing
+          price, at most D; collateral that can be pushed profitably on the thinnest SDEX book of the last 24 hours,
+          E. A pool that never launched, or holds under $10K, is not rated (NR). Blend&rsquo;s own pool state is shown
+          separately: it decides whether you can deposit at all, and so does a backstop queue that one call would
+          turn into a freeze.
         </p>
       </header>
 

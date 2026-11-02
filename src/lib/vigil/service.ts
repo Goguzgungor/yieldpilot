@@ -5,11 +5,12 @@
  * so callers cache the result (see runtime.ts `getRatings`).
  */
 import { createBlendOnchainPoolSource } from "../discovery";
+import { historyFor, mergeDepthHistory, samplesOf, type DepthHistory, type DepthHistoryStore } from "./depthHistory";
 import { functionSource, stellarExpertDeploySource } from "./discovery";
 import { runVigil, toRatingsJson, type DefindexStrategyRef, type EngineResult } from "./engine";
 import { createLiveReaders, type BlendDeployment } from "./live";
 
-export type { BlendDeployment };
+export type { BlendDeployment, DepthHistoryStore };
 
 export interface LiveRatingsConfig {
   rpcUrl: string;
@@ -21,6 +22,11 @@ export interface LiveRatingsConfig {
   defindexStrategies: DefindexStrategyRef[];
   /** Delay between RPC calls (rate-limit friendliness). */
   callDelayMs?: number;
+  /**
+   * Where earlier order books are kept for the rolling-window depth. Without
+   * one, each run rates manipulation on the book it reads (v2.2 behaviour).
+   */
+  depthHistory?: DepthHistoryStore;
   log?(msg: string): void;
 }
 
@@ -48,17 +54,40 @@ export async function runLiveVigil(cfg: LiveRatingsConfig): Promise<EngineResult
       functionSource(`rpc:backstop-reward-zone+recent-deploy-events:${dep.name}`, () => rpcSource.listPools()),
     ];
   });
-  return runVigil(
+  // Books from earlier runs are attached to each snapshot; this run's books are
+  // added to the store afterwards, so a pool is never compared with itself.
+  let past: DepthHistory = {};
+  if (cfg.depthHistory) {
+    try {
+      past = await cfg.depthHistory.load();
+    } catch (e) {
+      cfg.log?.(`depth history unavailable, rating on single reads: ${(e as Error).message}`);
+    }
+  }
+  const result = await runVigil(
     {
       sources,
       verifier: live.verifier,
       fallbackPoolIds: cfg.curatedPoolIds,
-      snapshot: live.snapshot,
+      snapshot: async (poolId) => {
+        const s = await live.snapshot(poolId);
+        const dexDepthHistory = historyFor(s, past);
+        return dexDepthHistory ? { ...s, dexDepthHistory } : s;
+      },
       readStrategy: live.readStrategy,
       log: cfg.log,
     },
     { defindexStrategies: cfg.defindexStrategies },
   );
+  if (cfg.depthHistory) {
+    const fresh = Object.values(result.snapshots).flatMap(samplesOf);
+    try {
+      await cfg.depthHistory.save(mergeDepthHistory(past, fresh, result.computedAt));
+    } catch (e) {
+      cfg.log?.(`depth history not saved: ${(e as Error).message}`);
+    }
+  }
+  return result;
 }
 
 export async function computeLiveRatings(cfg: LiveRatingsConfig): Promise<RatingsJson> {

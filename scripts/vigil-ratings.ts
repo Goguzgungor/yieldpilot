@@ -3,11 +3,14 @@
  *
  *   npx tsx scripts/vigil-ratings.ts                 # table on stderr, ratings JSON on stdout
  *   npx tsx scripts/vigil-ratings.ts ratings.json    # table on stdout, JSON written to the path
+ *   VIGIL_DEPTH_HISTORY=depth.json npx tsx scripts/vigil-ratings.ts …
+ *       keep the SDEX books between runs in that file, so manipulation is rated
+ *       on the thinnest book of the last 24 h (as the server does) instead of one read
  *
  * Reads SCAN_* settings from .env (never prints secrets).
  */
 import { config as loadEnv } from "dotenv";
-import { writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { toRatingsJson, type DefindexStrategyRef } from "../src/lib/vigil/engine";
 import { runLiveVigil } from "../src/lib/vigil/service";
 import type { PoolRating } from "../src/lib/vigil/types";
@@ -45,6 +48,7 @@ try {
   print("warning: SCAN_DEFINDEX_STRATEGIES is not valid JSON — skipping DeFindex");
 }
 
+const historyPath = process.env.VIGIL_DEPTH_HISTORY;
 const started = Date.now();
 const result = await runLiveVigil({
   rpcUrl,
@@ -52,6 +56,14 @@ const result = await runLiveVigil({
   deployments,
   curatedPoolIds: curated,
   defindexStrategies: strategies,
+  ...(historyPath
+    ? {
+        depthHistory: {
+          load: async () => (existsSync(historyPath) ? JSON.parse(readFileSync(historyPath, "utf8")) : {}),
+          save: async (h) => writeFileSync(historyPath, JSON.stringify(h)),
+        },
+      }
+    : {}),
   log: (m) => console.error(`[vigil] ${m}`),
 });
 

@@ -108,6 +108,17 @@ export interface DexDepth {
   source: string; // e.g. "horizon /order_book"
 }
 
+/**
+ * An earlier SDEX order book of an asset, kept for the rolling-window depth
+ * (v2.3): the manipulation factor takes the thinnest book seen in the window.
+ */
+export interface DexDepthSample extends DexDepth {
+  /** Unix seconds the book was read. */
+  sampledAt: number;
+  /** The asset's oracle price when the book was read; the asks are rescaled to the current price. */
+  refPriceUsd: number;
+}
+
 export interface PoolSnapshot {
   poolId: string;
   name: string;
@@ -126,6 +137,8 @@ export interface PoolSnapshot {
   backstop: BackstopSnapshot | null;
   /** SDEX depth, only fetched for SDEX-priced collateral assets (keyed by assetId). */
   dexDepth: Record<string, DexDepth>;
+  /** Earlier books of the same assets from the last THRESHOLDS.depthWindowSec, keyed by assetId (v2.3). */
+  dexDepthHistory?: Record<string, DexDepthSample[]>;
   /** Chain time the snapshot was taken at. */
   asOf: { timestamp: number; ledger?: number };
   /** Inputs that could not be read; each becomes a reason on the rating. */

@@ -11,12 +11,13 @@ describe("pathsToGrades", () => {
     expect(p.B).toMatchObject({ reachable: true, already: true, steps: [] });
   });
 
-  it("an on-ice pool with an empty backstop is B, and reaches A by refilling the backstop (Blend reactivates it)", () => {
+  it("an on-ice pool with an empty backstop is C (HR9), and reaches B and A by refilling the backstop (Blend reactivates it)", () => {
     // Fixed today: status 3 because the backstop is below Blend's threshold.
     const s = healthyPool({ poolId: cid("fixed-like"), status: 3, backstop: backstop({ usdc: 0, blnd: 0, meetsThreshold: false, q4wPct: 0.066 }) });
-    expect(ratePool(s).grade).toBe("B");
+    expect(ratePool(s).grade).toBe("C");
     const p = pathsToGrades(s);
-    expect(p.B.already).toBe(true);
+    expect(p.B.reachable).toBe(true);
+    expect(p.B.levers).toEqual(["backstop"]);
     expect(p.A.reachable).toBe(true);
     expect(p.A.levers).toEqual(["backstop"]);
     expect(p.A.steps[0]).toMatch(/backstop/i);

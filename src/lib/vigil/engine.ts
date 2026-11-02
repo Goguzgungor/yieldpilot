@@ -127,6 +127,16 @@ export function toRatingsJson(r: EngineResult) {
           dexDepth: Object.fromEntries(
             Object.entries(s.dexDepth).map(([k, v]) => [k, { levels: v.asks.length, truncated: v.truncated, bestAsk: v.asks[0]?.price ?? null, source: v.source }]),
           ),
+          ...(s.dexDepthHistory
+            ? {
+                dexDepthHistory: Object.fromEntries(
+                  Object.entries(s.dexDepthHistory).map(([k, xs]) => [
+                    k,
+                    xs.map((x) => ({ sampledAt: x.sampledAt, refPriceUsd: x.refPriceUsd, levels: x.asks.length, truncated: x.truncated })),
+                  ]),
+                ),
+              }
+            : {}),
         },
       ]),
     ),

@@ -4,12 +4,15 @@ import { backstop, cid, healthyPool, reserve, src } from "./testkit";
 
 // v2.1: the grade answers "how safe is it to supply here?"; Blend's pool state
 // is reported next to it (and decides whether deposits are possible) instead of
-// flattening every non-active pool to the same 49.
-const uninsured = backstop({ usdc: 0, blnd: 0, meetsThreshold: false });
+// flattening every non-active pool to the same 49. Since v2.3 a backstop that
+// covers under 1% of the borrows is HR9 (at most C, score-v23.test.ts); these
+// cases keep a backstop under Blend's threshold that still covers ~17%, so
+// HR7's "at most B" is the ceiling that applies.
+const uninsured = backstop({ usdc: 50_000, blnd: 100_000, meetsThreshold: false });
 
 describe("v2.1 scoring", () => {
   it("weights still sum to 1, with no pool_status factor", () => {
-    expect(ENGINE_VERSION).toMatch(/^vigil-risk-v2\.[12]\./);
+    expect(ENGINE_VERSION).toMatch(/^vigil-risk-v2\.[123]\./);
     expect("pool_status" in WEIGHTS).toBe(false);
     expect(Object.values(WEIGHTS).reduce((a, b) => a + b, 0)).toBeCloseTo(1, 10);
   });

@@ -1,6 +1,8 @@
 # Vigil risk engine: methodology
 
-Engine version **`vigil-risk-v2.2.0`** (2026-11-02). Code: `src/lib/vigil/` (engine and tests), `scripts/vigil-ratings.ts` (live run), `scripts/vigil-backtest.ts` (backtest). What changed between versions, and why, is in §10.
+Engine version **`vigil-risk-v2.3.0`** (2026-11-02). Code: `src/lib/vigil/` (engine and tests), `scripts/vigil-ratings.ts` (live run), `scripts/vigil-backtest.ts` (backtest). What changed between versions, and why, is in §10.
+
+**v2.3 is frozen for the SCF review round.** Four versions shipped in two days, each after a blind review of the previous one's live output. From here the methodology changes only through the external review in deliverable 1.2, and any change is published with the reviewer's notes and a new version number. The engine version is part of every `reasonsHash`, and every hourly publishing run is archived with its inputs (§5, reasonsHash).
 
 Vigil gives a pool-level risk rating to every Blend pool on Stellar **mainnet**, from both Blend deployments that run the V2 pool code (V2, and v2.1 since 2026-09-30), and to DeFindex strategies built on those pools. It only reads data. Every contract read is a `simulateTransaction` of a view call. Nothing is signed or submitted.
 
@@ -65,7 +67,7 @@ Stellar Expert's metadata is consistent with this: it reports the factory with `
 | Source feed identity | Known ids, plus `base()`, `assets()`, `resolution()`, `admin()` **[chain]** and the creator **[SE]** |
 | Opaque adapters (no config getters) | Source is *inferred* when the adapter returns the same `(price, timestamp)` as a known Reflector feed, read back to back. Marked `inferred: true`. |
 | Backstop state per pool | `pool_data(pool)` on **the backstop named in the pool's config** returns `tokens`, `shares`, `q4w_pct`, `blnd`, `usdc` **[chain]** |
-| SDEX depth | Horizon `/order_book` for the asset against classic USDC (`GA5ZSEJY…`), up to 200 levels **[H]**. Fetched **only for collateral priced from SDEX feeds**. |
+| SDEX depth | Horizon `/order_book` for the asset against classic USDC (`GA5ZSEJY…`), up to 200 levels **[H]**. Fetched **only for collateral priced from SDEX feeds**. Since v2.3 each read is also stored (at most one per asset per 50 minutes), and the books of the last 24 h are rated together with the current one (§4). |
 | DeFindex strategy | The strategy's instance storage `Config.pool` / `Config.asset`, plus `Reserves.total_b_tokens·b_rate` **[chain]** |
 
 ### Feed attribution (2026-11-01)
@@ -117,7 +119,7 @@ The score is rounded, then the hard rules (§5) cap it. `uncappedScore` is the s
 |---|---|---|---|
 | `oracle_source` | 0.18 | **Worst** quality across collateral. Base 100, Reflector CEX/FX 95, RedStone 85, fixed peg 60, Reflector DEX 60, other SDEX feed 50, PT model 50, issuer push 45, opaque 25, missing 0. Minus 10 for a market feed with `max_dev = 0`; minus 10 for an inferred source. | A pool is only as sound as its weakest collateral price. One mispriced collateral drained YieldBlox. |
 | `oracle_freshness` | 0.12 | 0 if the price of any collateral, or of any asset with outstanding borrows, is missing or stale; otherwise 100. Stale means older than `max(3600 s, 2·resolution)`, capped at 24 h. | The 24 h cap is Blend's own limit (`load_price` panics when `timestamp + 24h < now`, pool.rs **[src]**). A stale price blocks liquidations, and an unpriced debt counts as $0 in every USD total. |
-| `sdex_manipulation` | 0.23 | Worst ρ across SDEX-priced collateral: `sub = clamp(50 + 50·log10 ρ)`, so ρ = 0.1 → 0, ρ = 1 → 50, ρ ≥ 10 → 100. A truncated book with ρ < 1 → 50 (uncertain). A missing book → 50. Opaque-sourced collateral → 50. | The only failure mode that has actually drained a Blend pool (§6). |
+| `sdex_manipulation` | 0.23 | Worst ρ across SDEX-priced collateral, each on the **thinnest of its books from the last 24 h**: `sub = clamp(50 + 50·log10 ρ)`, so ρ = 0.1 → 0, ρ = 1 → 50, ρ ≥ 10 → 100. A truncated book with ρ < 1 → 50 (uncertain). No book at all → 50. Opaque-sourced collateral → 50. | The only failure mode that has actually drained a Blend pool (§6). An attacker picks the moment the book is thin, so one read at a random time overstates the cost. |
 | `backstop_coverage` | 0.18 | `effective = 5·usdc·(1−q4w)`, `coverage = effective / liabilities_USD`. `sub = clamp(coverage / 0.10)·100`. If liabilities are under $1k: 100 when a backstop exists, else 50. | The backstop is first-loss capital. The Comet LP is 80/20 BLND/USDC, so its spot value is 5×USDC ("LP token is 20% USDC, so 5x is the spot price", backstop/src/backstop/pool.rs **[src]**). |
 | `utilization` | 0.12 | `borrowed / supplied` of the **most-borrowed reserve** with at least $1K supplied (the pool-wide figure is shown for reference). 100 at ≤ 60%, 0 at ≥ 95%, linear in between. | A depositor supplies one asset: Fixed's idle XLM does not make its USDC (76% borrowed) withdrawable. A pool-wide USD average hid exactly that. |
 | `supply_caps` | 0.12 | Worst κ over *weakly priced* collateral. Weakly priced means not base, CEX, FX or RedStone, and not SDEX collateral that already scored ≥ 75 on depth. `κ = cap·price·c / borrowable_liquidity`; κ ≤ 0.1 → 100, κ ≥ 1 → 0, log-linear in between. Not applicable if liquidity is under $1k. | Caps bound how much borrow power a weakly priced collateral can create. |
@@ -152,22 +154,30 @@ This model only runs for collateral whose source is `reflector_dex` or `sdex_oth
 
 Vigil reports the cheapest ρ. A ρ computed from a book that was fully observed outranks a lower ρ that is only a lower bound, because Horizon returned 200 levels and the book "ran out". **ρ < 1** means a profitable attack exists.
 
+**Rolling window (v2.3).** The model runs on the current book and on every stored book of the same asset from the last 24 h, and the worst result sets the factor (and HR3). A past book is rescaled to today's oracle price: each level keeps its USD size and its distance from the price, so pushing the price ×M costs what it cost then. The pool's own reserves (liquidity, caps, c_factor) are always today's. The factor's note names the book used ("thinnest of N books in 24 h, read HH:MM UTC"). Stored books are trimmed to the levels the largest multiplier can reach, plus the next one.
+
 ## 5. Hard rules
 
 | Rule | Condition | Effect |
 |---|---|---|
 | **NR** | The pool never launched (status 6, Setup), or holds under **$10K** supplied | **Not rated**: no score, no grade, not eligible. Nothing is published on-chain for it, so RiskGate refuses deposits as for any unrated pool. |
 | **HR1** | Status ≥ 4 (Admin_Frozen, Frozen, Setup): Blend refuses supply above 3 (`pool.rs` `require_action_allowed` **[src]**) | Not eligible. The grade is unchanged: it still describes the setup. On_Ice pools (2/3) accept deposits and are graded on their merits. |
+| **HR8** | The backstop's withdrawal queue is at or past the share at which `update_status` **freezes** the pool: 60% for Active or On_Ice, 75% for Admin_On_Ice (`status.rs` **[src]**) | Not eligible. The grade is unchanged. Deposits are still open, but one permissionless call closes them. |
 | **HR2** | The price of a collateral, or of an asset with outstanding borrows, is stale or missing | Not eligible. Score ≤ 49, so grade ≤ D. |
 | **HR3** | SDEX-priced collateral with ρ < 1, computed from a fully observed book | Not eligible. Score ≤ 34, so **grade E**. |
 | **HR5** | Collateral whose price source cannot be identified (opaque, and no exact match) | Not eligible. Score ≤ 64. |
 | **HR4** | Score < 50 | Not eligible |
 | **HR6** | A collateral priced by a source below the robust threshold (`sourceQuality` < 85: anything weaker than RedStone, Reflector CEX/FX or the base asset) | **At most B**, as a soft ceiling (below) |
 | **HR7** | The backstop does not count as first-loss capital: it is below Blend's threshold, **or ≥ 30% of it is queued for withdrawal** | **At most B**, as a soft ceiling |
+| **HR9** | The pool has ≥ $1K of borrows and its effective backstop (`5·usdc·(1−q4w)`) covers **under 1%** of them | **At most C**, as a soft ceiling (50+ compressed into 50–64). Replaces HR7, which it implies. |
 
 Grade bands: A ≥ 80, B ≥ 65, C ≥ 50, D ≥ 35, E < 35.
 
-**Hard caps and soft ceilings.** HR2, HR3 and HR5 are hard caps: they describe conditions where the number below the cap carries no useful information. HR6 and HR7 share one **soft ceiling**, applied once even when both hold: scores above 65 are compressed linearly into 65–79 (`65 + (score − 65)·14/35`), so such pools top out at B but keep their order. A hard `min(score, 79)` would flatten all of them to the same number.
+**Hard caps and soft ceilings.** HR2, HR3 and HR5 are hard caps: they describe conditions where the number below the cap carries no useful information. HR6 and HR7 share one **soft ceiling**, applied once even when both hold: scores above 65 are compressed linearly into 65–79 (`65 + (score − 65)·14/35`), so such pools top out at B but keep their order. A hard `min(score, 79)` would flatten all of them to the same number. HR9 is the same construction one band lower: `50 + (score − 50)·14/50`, so at most 64 (C). When HR9 holds it is the ceiling that applies.
+
+**Why HR9.** Under v2.2 Fixed (V2) was B 69 with $0 of backstop against $39.6M of borrows: the backstop factor was 0, but the other factors were good enough to carry it into B. Both blind reviews of 2026-11-02 called that generous, and it is: with no first-loss capital, any bad debt goes straight to lenders, however clean the oracle setup is. 1% is the line because at that cover a bad debt of 1% of the borrows already exceeds the backstop; full marks on the factor start at 10%. The cap is C, not D, because the pool's prices and collateral can still be sound: C says "lend here only if you accept carrying the first loss".
+
+**Why HR8.** YieldBlox read On_Ice with 97.8% of its backstop queued to leave, and v2.2 marked it eligible. Blend's own rule freezes such a pool at 60% (75% when the admin set On_Ice), but only when someone calls `update_status`, which anyone can. HR8 applies Blend's rule before the call is made. Like HR1 it decides eligibility, not the grade.
 
 **Why HR6.** Without it a pool like YieldBlox (PYUSD at a fixed peg) or the Etherfuse pools (CETES/USTRY/TESOURO from the pool admin's own push oracle) would reach A as soon as the backstop came back, although oracle configuration is the failure mode Vigil exists to catch. SDEX-priced collateral whose order book was deep enough to make manipulation unprofitable (manipulation sub-score ≥ 75) counts as robust, as it does for supply caps.
 
@@ -200,7 +210,8 @@ DeFindex's own contract, keeper and upgrade risk is **not modelled**, and every 
 
 `reasonsHash = sha256(canonicalJson({engineVersion, inputs, factors, hardRules, score, uncappedScore, grade, eligibleForDeposit}))`
 
-- **`inputs`:** status, oracle, `asOf` (chain time and ledger), the backstop contract id and its `pool_data`, the per-reserve configuration, amounts, prices, source kind and `max_dev`, a sha256 of each SDEX ask book, and the data gaps.
+- **`inputs`:** status, oracle, `asOf` (chain time and ledger), the backstop contract id and its `pool_data`, the per-reserve configuration, amounts, prices, source kind and `max_dev`, a sha256 of each SDEX ask book and of each stored book in the 24 h window (with its time and reference price), and the data gaps.
+- **`engineVersion`** is hashed, so a hash also identifies the methodology. The registry does not store the version itself yet (§9).
 - **`score` / `uncappedScore`** are `null` for an NR pool.
 - **Canonical JSON:** keys sorted, no whitespace, non-integers rounded to 6 decimal places, bigint written as a string.
 - **`computedAt` is excluded.** The same snapshot always gives the same hash.
@@ -214,39 +225,40 @@ DeFindex's own contract, keeper and upgrade risk is **not modelled**, and every 
 | **Comet LP today** (the V2 backstop's LP token) | Holds 387.76 BLND and 0.64 USDC against a total supply of about 1.86e20 LP tokens (raw `get_total_supply` = 1.86e27 stroops) **[chain]**. As a result, the V2 backstop's `pool_data(..)` returns `blnd = 0` and `usdc = 0` for **every V2 pool** **[chain]**: their backstop insurance is worth about $0 today. | **[chain]** |
 | **Blend v2.1, 2026-09-30** | Blend relaunched the same pool code with a new backstop (`CCS4AZ…`) whose LP is built from Comet v1.1.0, and a new factory. Its one pool, Fixed v2.1 `CBAKAZ…`, is Active with 7.14M BLND and 11,820 USDC behind it, 44.5% of it queued for withdrawal on 2026-11-01 **[chain]**. | blend-ui PR #238; **[chain]** |
 
-## 7. Live results (mainnet, engine v2.2.0, computedAt 2026-11-01T22:22:04Z, 88 s run)
+## 7. Live results (mainnet, engine v2.3.0, computedAt 2026-11-02T06:53:29Z, 91 s run)
 
 ```
 coverage: 13 pools found [stellar-expert:factory-deploy-events:v2=12, rpc:backstop-reward-zone+recent-deploy-events:v2=0,
           stellar-expert:factory-deploy-events:v2.1=1, rpc:backstop-reward-zone+recent-deploy-events:v2.1=1, curated=2],
           rated 13, failed 0, unverified 0, rejected 0
 protocol | name                   | id      | status         | dep  | scr | unc | G  | elg |       TVL | weakest factor
-blend    | Fixed v2.1             | CBAKAZ… | 1 Active       | v2.1 |  79 |  99 | B  | yes |   $228.4K | oracle_source=95
-blend    | Fixed                  | CAJJZS… | 3 On_Ice       | v2   |  69 |  75 | B  | yes |  $168.87M | backstop_coverage=0
-blend    | Etherfuse              | CDMAVJ… | 4 Admin_Frozen | v2   |  60 |  60 | C  | no  |    $15.1K | backstop_coverage=0
-blend    | Orbit                  | CAE7QV… | 4 Admin_Frozen | v2   |  57 |  57 | C  | no  |   $190.8K | supply_caps=0
-blend    | YieldBlox              | CCCCIQ… | 3 On_Ice       | v2   |  53 |  53 | C  | yes |   $157.7K | backstop_coverage=0
-blend    | Forex                  | CBYOBT… | 5 Frozen       | v2   |  NR |   - | NR | no  |      $457 | oracle_freshness=0
-blend    | Solv                   | CC4HHX… | 3 On_Ice       | v2   |  NR |   - | NR | no  |      $173 | backstop_coverage=50
+blend    | Fixed v2.1             | CBAKAZ… | 1 Active       | v2.1 |  75 |  89 | B  | yes |   $181.3K | utilization=17.1
+blend    | Fixed                  | CAJJZS… | 3 On_Ice       | v2   |  57 |  75 | C  | yes |  $168.66M | backstop_coverage=0
+blend    | Orbit                  | CAE7QV… | 4 Admin_Frozen | v2   |  56 |  56 | C  | no  |   $190.8K | supply_caps=0
+blend    | Etherfuse              | CDMAVJ… | 4 Admin_Frozen | v2   |  53 |  60 | C  | no  |    $15.1K | backstop_coverage=0
+blend    | YieldBlox              | CCCCIQ… | 3 On_Ice       | v2   |  51 |  53 | C  | no  |   $157.7K | backstop_coverage=0
+blend    | Forex                  | CBYOBT… | 5 Frozen       | v2   |  NR |   - | NR | no  |      $456 | oracle_freshness=0
+blend    | Solv                   | CC4HHX… | 3 On_Ice       | v2   |  NR |   - | NR | no  |      $174 | backstop_coverage=50
 blend    | Spectra PTs            | CDZVHC… | 2 Admin_On_Ice | v2   |  NR |   - | NR | no  |       $10 | oracle_source=50
 blend    | YieldBlox              | CBNR7P… | 6 Setup        | v2   |  NR |   - | NR | no  |        $0 | oracle_source=50
 blend    | Orbit                  | CB4OFH… | 6 Setup        | v2   |  NR |   - | NR | no  |        $0 | oracle_source=50
 blend    | Etherfuse              | CALRF5… | 6 Setup        | v2   |  NR |   - | NR | no  |        $0 | oracle_source=0
 blend    | Etherfuse              | CADR6Q… | 6 Setup        | v2   |  NR |   - | NR | no  |        $0 | oracle_source=45
 blend    | New Fixed              | CAIYBZ… | 6 Setup        | v2   |  NR |   - | NR | no  |        $0 | backstop_coverage=50
-defindex | DeFindex USDC Fixed    | CDB2WM… | 3 On_Ice       | v2   |  69 |  75 | B  | yes |   $18.80M | underlying_pool=69
-defindex | DeFindex EURC Fixed    | CC5CE6… | 3 On_Ice       | v2   |  69 |  75 | B  | yes |    $19.0K | underlying_pool=69
-defindex | DeFindex XLM Fixed     | CDPWNU… | 3 On_Ice       | v2   |  69 |  75 | B  | yes |     $7.1K | underlying_pool=69
-defindex | DeFindex USDC Etherfus | CCBTSH… | 4 Admin_Frozen | v2   |  60 |  60 | C  | no  |        $7 | underlying_pool=60
+defindex | DeFindex USDC Fixed    | CDB2WM… | 3 On_Ice       | v2   |  57 |  75 | C  | yes |   $18.80M | underlying_pool=57
+defindex | DeFindex EURC Fixed    | CC5CE6… | 3 On_Ice       | v2   |  57 |  75 | C  | yes |    $19.1K | underlying_pool=57
+defindex | DeFindex XLM Fixed     | CDPWNU… | 3 On_Ice       | v2   |  57 |  75 | C  | yes |     $7.0K | underlying_pool=57
+defindex | DeFindex USDC Etherfus | CCBTSH… | 4 Admin_Frozen | v2   |  53 |  60 | C  | no  |        $7 | underlying_pool=53
 ```
 
 **Reading the table:**
 
-- **Fixed v2.1 is the best-rated pool, and the only thing between it and an A is its backstop queue.** Its uncapped score is 99: CEX-priced collateral, no SDEX exposure, and a backstop worth $32.8K after the queue, covering 29.8% of $110.3K of borrows. But 44.5% of that backstop is queued to leave, past the 30% at which Blend's `update_status` would put the pool On_Ice, so HR7 compresses it to 79 (B). Its path to A is one step: bring the queue under 30%.
-- **Fixed (V2) is B 69.** Its backstop covers $0 of $39.6M of borrows, and its USDC reserve is 76.4% borrowed (utilization 53). Its path to A, refilling the V2 backstop to about $4.0M, depends on Blend reopening V2 backstop deposits, which its app currently takes for v2.1 pools only.
-- **Orbit `CAE7QV…` moves in and out of grade E** because its CETES order book changes. CETES (c = 0.85) is priced through an adapter that returns Reflector-DEX prices exactly (inferred). On 2026-11-01, pushing CETES ×100 cost about $275 at 15:07 UTC (E), $253K at 19:17 (not E), $268 at 20:19 (E), $101.7K at 22:19 (E: still under the $180K it could borrow) and $253.6K at 22:22 (C 57). The pool is Admin_Frozen, so nothing can be borrowed today; the risk is in its configuration if it were reactivated. A rating that flips with single order-book reads is why the next version uses the minimum depth over a rolling window (§9.1).
-- **8 pools are NR.** Six never launched; Forex ($457, whose oracle publishes no price for the three assets borrowed in it), Solv ($173) and Spectra ($10) hold too little to measure. In v2.1 these took the top four scores.
-- **6 of 17 ratings accept deposits:** Fixed v2.1, Fixed, YieldBlox and DeFindex's three Fixed strategies.
+- **Fixed v2.1 is the only B, and the only thing between it and an A is its backstop queue.** Its backstop covers its borrows well after the queue, but 44.5% of it is queued to leave, past the 30% at which Blend's `update_status` would put the pool On_Ice, so HR7 compresses it to B. Its USDC reserve was 89% borrowed in this run (utilization 17), so its uncapped score fell from 99 to 89 since the previous night.
+- **Fixed (V2) is C 57 (HR9).** Its backstop covers $0 of $39.6M of borrows. Its setup scores 75 uncapped (CEX-priced collateral, no SDEX exposure), so it stays eligible, but at C: lenders carry the first loss. DeFindex's three Fixed strategies, $18.8M of them in USDC, inherit C 57. Its path to B and A is the backstop, which Blend's app takes for v2.1 pools only.
+- **YieldBlox is not eligible (HR8)**: 97.8% of its backstop is queued, so one `update_status` call would freeze it. It is C 51 (HR9 as well).
+- **Orbit `CAE7QV…` is C 56 in this run.** It moved in and out of grade E on 2026-11-01 as its CETES book changed: pushing CETES ×100 cost about $275 at 15:07 UTC (E), $253K at 19:17 (not E), $268 at 20:19 (E) and $253.6K at 22:22. From v2.3 the server rates it on the thinnest book of the last 24 h, so once a thin book has been read the grade stays E for a day instead of flipping back within the hour. This CLI run had no stored history, so it shows the current book only. The pool is Admin_Frozen either way.
+- **8 pools are NR.** Five never launched (status 6). Forex ($456, whose oracle publishes no price for the three assets borrowed in it), Solv ($174) and Spectra ($10) hold too little to measure.
+- **5 of 17 ratings accept deposits:** Fixed v2.1, Fixed, and DeFindex's three Fixed strategies. Only Fixed v2.1 reaches the default RiskGate minimum of 60.
 
 ## 8. Backtest: YieldBlox before 22 Feb 2026
 
@@ -266,7 +278,7 @@ defindex | DeFindex USDC Etherfus | CCBTSH… | 4 Admin_Frozen | v2   |  60 |  6
 **Result** (`npx tsx scripts/vigil-backtest.ts`):
 
 ```
-score 34 (uncapped 49) grade E eligible=false status=1 Active TVL $27.41M        (engine v2.2.0)
+score 34 (uncapped 49) grade E eligible=false status=1 Active TVL $27.41M        (engine v2.3.0; same as v2.2.0)
 oracle_source 50 (XLM ← reflector_dex, max_dev=0) | oracle_freshness 100
 sdex_manipulation 0  USTRY: pump ×100 costs $5.19 on SDEX + $190.0K collateral to borrow $13.14M (rho=0.0145; hold 2 rounds ≈600s, max_dev=10%)
 backstop_coverage 100 ($1.53M covers 18.8% of $8.10M) | utilization 42 (most-borrowed reserve USDC 80.3%; pool-wide 29.6%)
@@ -282,7 +294,7 @@ actually extracted: $10.87M
 
 ## 9. Known limitations and assumptions
 
-1. **One order-book read per run.** The manipulation cost comes from a single Horizon read, so a pool can change grade within hours as asks come and go (Orbit, §7). The next version uses the minimum depth over a rolling 24 h window.
+1. **The depth window only sees the books we read.** Books are read when ratings are computed, at least hourly (the publisher), so asks posted and pulled between two reads are missed. The stored books live in the server's database: a second publisher computing on its own starts from single reads and agrees with us only after it has its own 24 h (the CLI keeps them in a file with `VIGIL_DEPTH_HISTORY`). Publishing the stored books with each run, so anyone can recompute, is deliverable 1.1.
 2. **SDEX book coverage is partial.** Vigil reads only the Horizon USDC-quoted book: at most 200 levels, no AMM pools, and no XLM-quoted paths. Ignoring other venues *lowers* the estimated manipulation cost, so the model errs toward flagging. A truncated book makes the cost a lower bound, and that case never fires HR3.
 3. **Attacker-friendly simplifications in the manipulation model:**
    - Order books are not replenished (r = 0).
@@ -293,13 +305,13 @@ actually extracted: $10.87M
 5. **Prices come from the pool's own oracle.** TVL and liquidity are valued with the pool oracle's prices. A manipulated oracle therefore also inflates TVL.
 6. **Backstop value is approximate.** It uses Comet spot (5×USDC, for both the V2 and the v2.1 LP) and ignores price impact when the backstop is drawn.
 7. **Thresholds are judgment calls.** The source-quality scores, in particular issuer push 45 and fixed peg 60, and the $10K NR line. The CETES, USTRY and TESOURO push oracle used by the Etherfuse pools is operated by the pool admin's own key (`admin()` = `GDH3FR…` **[chain]**).
-8. **The on-chain registry carries no engine version.** A published `(score, timestamp)` does not say which methodology produced it, so an owner's minimum score changes meaning when the methodology changes (it did on 2026-11-01: v2.0 gave 49 to most pools, v2.1 gave 71–75). Adding the engine version to the published rating is planned.
+8. **The on-chain registry carries no engine version or eligibility.** A published `(score, timestamp, reasonsHash)` does not say which methodology produced it, so an owner's minimum score changes meaning when the methodology changes (it did on 2026-11-01: v2.0 gave 49 to most pools, v2.1 gave 71–75). The version is inside `reasonsHash`, and each hourly run's input is archived (GitHub Actions artifact, 90 days), but a contract cannot read either. The guard checks only the score, so a pool that is not eligible under HR8 but scores at or above an owner's minimum would still pass it until someone calls `update_status`; HR1 pools are refused by Blend itself. Storing the version and the eligibility flag in the registry is deliverable 1.3.
 9. **The backtest is a reconstruction.** USTRY's book comes from a post-mortem, not from chain data. The LP price is an estimate from auction fills. Prices are daily closes, not the oracle's own values at 00:20Z.
 10. **No contract-level risk.** The engine does not model upgradeability or admin key risk of pools, oracles or DeFindex. These are noted only through the oracle class.
 
 ## 10. Version history
 
-All three versions ran on 2026-11-01/02 against the same chain. Each change came from a review of the previous version's live output.
+All four versions ran on 2026-11-01/02 against the same chain. Each change came from a review of the previous version's live output. v2.3 is frozen for the review round (see the top of this document).
 
 **v2.0 → v2.1 (2026-11-01).** v2.0 gave every non-active pool the same 49 (D): once Blend's V2 backstop was drained, every pool fell into that cap and the differences that matter disappeared.
 
@@ -323,3 +335,13 @@ All three versions ran on 2026-11-01/02 against the same chain. Each change came
 | Path text | "Blend then reactivates the pool by itself" | `update_status` is permissionless but must be called; V2 backstop deposits are closed in Blend's app |
 
 Effect on the live table: v2.1 had 11 B's (71–75), four of them for pools holding $173 or less. v2.2 grades 5 Blend pools (B 79, B 69, C 60, C 57, C 53) and marks 8 NR.
+
+**v2.2 → v2.3 (2026-11-02).** Two more blind reviews, of v2.2, found that a pool lent against with no backstop at all still reached B, that a pool one permissionless call from Frozen was marked eligible, and that a single order-book read let Orbit's grade flip within hours.
+
+| | v2.2 | v2.3 |
+|---|---|---|
+| No first-loss capital | HR7: at most B | **HR9**: under 1% backstop cover of ≥ $1K borrows ⇒ at most C (soft ceiling 50–64) |
+| Queue past Blend's freeze share | eligible (YieldBlox, 97.8% queued) | **HR8**: not eligible (60%, or 75% for Admin_On_Ice), grade unchanged |
+| SDEX depth | one read | **thinnest book of the last 24 h**, past books rescaled to today's price; the books are part of `reasonsHash` |
+
+Effect on the live table: Fixed (V2) B 69 → C 57, DeFindex's Fixed strategies B 69 → C 57, YieldBlox eligible → not eligible, Etherfuse C 60 → C 53. Fixed v2.1 is unaffected by the new rules (B 75 on 2026-11-02 06:53, after its utilization rose).
