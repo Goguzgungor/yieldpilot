@@ -71,7 +71,7 @@ const Schema = z.object({
   // Rating gate: deposits additionally need a fresh rating >= VIGIL_MIN_SCORE
   // from this registry (withdrawals are never gated), on new wallets and in
   // the agent's own choice (vigilGate.ts). On by default since 2026-11-02, when
-  // the hourly publisher (.github/workflows/vigil-publish.yml) started keeping
+  // the publisher (now /api/cron/publish, every 30 minutes) started keeping
   // the ratings, and the exec pool's stand-in rating, fresh; without it
   // deposits fail closed. "off" disables the gate.
   VIGIL_REGISTRY_ID: z.string().min(1).default("CB4LXLCCD7YDND5FBVXPKPHUQMF7JFSDRVXHG7ZZTWWNPJ6WDCXDNDF6"),

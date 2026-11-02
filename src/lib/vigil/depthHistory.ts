@@ -15,7 +15,7 @@ export interface DepthHistoryStore {
   save(history: DepthHistory): Promise<void>;
 }
 
-/** At most one stored book per asset per this many seconds (the publisher runs hourly). */
+/** At most one stored book per asset per this many seconds (the publisher runs every 30 minutes). */
 export const MIN_SAMPLE_SPACING_SEC = 50 * 60;
 
 /**

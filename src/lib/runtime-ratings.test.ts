@@ -4,6 +4,12 @@ import { Keypair } from "@stellar/stellar-sdk";
 // The mainnet read is replaced: these tests cover only how /api/ratings uses the cache.
 const compute = vi.fn();
 vi.mock("./vigil/service", () => ({ computeLiveRatings: (...a: unknown[]) => compute(...a) }));
+// The registry submission is replaced too; the archive helpers stay real.
+const publish = vi.fn();
+vi.mock("./vigil/publish", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./vigil/publish")>()),
+  publishRatings: (...a: unknown[]) => publish(...a),
+}));
 
 type Runtime = typeof import("./runtime");
 let runtime: Runtime;
@@ -86,5 +92,40 @@ describe("ratings cache", () => {
     compute.mockRejectedValue(new Error("rpc down"));
     await expect(runtime.refreshExpiredRatings()).resolves.toBeUndefined();
     expect((await runtime.getRatings()).data.computedAt).toBe("old");
+  });
+});
+
+describe("publishing", () => {
+  const computedAt = Math.floor(Date.now() / 1000) - 60;
+  const secret = Keypair.random().secret();
+
+  it("archives the run under the computedAt it signs, records the outcome, and holds a lease", async () => {
+    await kv().setKV("vigilRatings", JSON.stringify({ ...run("x"), computedAt, inputs: { P: { supplied: 1 } } }));
+    await kv().setKV("vigilRatingsAt", String(Date.now() - 60_000));
+    await kv().setKV("vigilPublishAt", "0");
+    publish.mockResolvedValue({ engineVersion: "vigil-risk-v2.3.0", computedAt, published: 9, skippedNotRated: 8, execPool: "", txs: ["h1", "h2"], failures: [] });
+
+    const out = await runtime.publishVigilRatings(secret);
+    expect(compute).not.toHaveBeenCalled(); // a cache under 5 min old is published as is
+    expect(publish.mock.calls[0][0]).toMatchObject({ computedAt, registryId: "CB4LXLCCD7YDND5FBVXPKPHUQMF7JFSDRVXHG7ZZTWWNPJ6WDCXDNDF6", heldPoolId: null });
+    expect(out).toMatchObject({ published: 9, txs: ["h1", "h2"] });
+    expect(await runtime.listArchivedRuns()).toEqual([computedAt]);
+    expect(JSON.parse((await runtime.getArchivedRun(computedAt))!).inputs).toEqual({ P: { supplied: 1 } });
+    expect((await runtime.getLastPublish())?.txs).toEqual(["h1", "h2"]);
+
+    expect(await runtime.publishVigilRatings(secret)).toBeNull(); // within the lease
+    expect(publish).toHaveBeenCalledTimes(1);
+  });
+
+  it("recomputes a cache over 5 minutes old before publishing", async () => {
+    publish.mockReset();
+    await kv().setKV("vigilRatings", JSON.stringify({ ...run("old"), computedAt: computedAt - 3600 }));
+    await kv().setKV("vigilRatingsAt", String(Date.now() - 20 * 60_000));
+    await kv().setKV("vigilPublishAt", "0");
+    compute.mockResolvedValue({ ...run("fresh"), computedAt });
+    publish.mockResolvedValue({ engineVersion: "v", computedAt, published: 1, skippedNotRated: 0, execPool: "", txs: [], failures: [] });
+    await runtime.publishVigilRatings(secret);
+    expect(compute).toHaveBeenCalledTimes(1);
+    expect(publish.mock.calls[0][0].computedAt).toBe(computedAt);
   });
 });

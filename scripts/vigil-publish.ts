@@ -17,18 +17,16 @@
  *   VIGIL_EXEC_POOL_ID=C…     YieldPilot's testnet exec pool (see below)
  *   VIGIL_POSITION_URL=https://yieldpilot.org/api/position
  *
- * Testnet stand-in: YieldPilot executes every deposit into one testnet pool,
- * whatever mainnet pool it chose. With VIGIL_EXEC_POOL_ID set, that pool gets
- * the rating of the mainnet pool YieldPilot holds (read from the position URL),
- * so the RiskGate on the testnet wallets checks the rating the agent routed by:
- * its score, or 0 when Vigil marks that pool not eligible. Nothing is published
- * for it when the pool is NR or there is no position, so the gate refuses.
- *
- * Runs every 30 minutes from .github/workflows/vigil-publish.yml.
+ * With VIGIL_EXEC_POOL_ID set, YieldPilot's testnet exec pool gets the rating of
+ * the mainnet pool YieldPilot holds (read from the position URL); see
+ * src/lib/vigil/publish.ts, which this shares with /api/cron/publish, the
+ * deployment's own publisher. Run by hand (or .github/workflows/vigil-publish.yml)
+ * to publish from elsewhere.
  */
 import { readFileSync, writeFileSync } from "node:fs";
-import { Keypair, TransactionBuilder, rpc, type Transaction } from "@stellar/stellar-sdk";
-import { RegistryClient, decodeVigilError, type RatingInput } from "../packages/vigil-sdk/src";
+import { Keypair, rpc } from "@stellar/stellar-sdk";
+import { RegistryClient } from "../packages/vigil-sdk/src";
+import { publishRatings, type PublishableRating as Rated } from "../src/lib/vigil/publish";
 
 const RPC = process.env.VIGIL_RPC_URL ?? "https://soroban-testnet.stellar.org";
 const PASS = process.env.VIGIL_NETWORK_PASSPHRASE ?? "Test SDF Network ; September 2015";
@@ -39,16 +37,6 @@ if (!secret) throw new Error("PUBLISHER_SECRET is required");
 const publisher = Keypair.fromSecret(secret);
 const server = new rpc.Server(RPC);
 
-interface Rated {
-  poolId: string;
-  name: string;
-  /** null for NR (not rated): nothing is published, so the guard refuses deposits. */
-  score: number | null;
-  grade: string;
-  eligibleForDeposit: boolean;
-  reasonsHash: string;
-}
-
 async function loadRatings(): Promise<{ engineVersion: string; computedAt: number; ratings: Rated[] }> {
   const text = source.startsWith("http") ? await (await fetch(source)).text() : readFileSync(source, "utf8");
   if (process.env.VIGIL_ARCHIVE) writeFileSync(process.env.VIGIL_ARCHIVE, text);
@@ -58,32 +46,9 @@ async function loadRatings(): Promise<{ engineVersion: string; computedAt: numbe
   return { engineVersion: String(body.engineVersion), computedAt: Number(body.computedAt), ratings: body.ratings };
 }
 
-/** The exec pool's stand-in rating (see header), or null when nothing should be published. */
-async function execMirror(ratings: Rated[], timestamp: bigint): Promise<RatingInput | null> {
-  const execPool = process.env.VIGIL_EXEC_POOL_ID;
+async function heldPool(): Promise<string | null> {
   const url = process.env.VIGIL_POSITION_URL;
-  if (!execPool || !url) return null;
-  const held = ((await (await fetch(url)).json()) as { poolId?: string | null }).poolId ?? null;
-  const r = held ? ratings.find((x) => x.poolId === held) : undefined;
-  if (!r || r.score === null) {
-    console.log(`exec pool ${execPool.slice(0, 6)}…: no rating published (${held ? `held pool ${held.slice(0, 6)}… is ${r ? "NR" : "unrated"}` : "no position"})`);
-    return null;
-  }
-  const score = r.eligibleForDeposit ? r.score : 0;
-  console.log(`exec pool ${execPool.slice(0, 6)}… stands in for ${r.name} ${held!.slice(0, 6)}…: ${r.grade} ${r.score}${r.eligibleForDeposit ? "" : " (not eligible ⇒ 0)"}`);
-  return { pool: execPool, score, timestamp, reasonsHash: r.reasonsHash };
-}
-
-async function send(tx: Transaction): Promise<string> {
-  const sent = await server.sendTransaction(tx);
-  if (sent.status === "ERROR") throw new Error(`send ERROR ${sent.errorResult?.toXDR("base64")}`);
-  let g = await server.getTransaction(sent.hash);
-  for (let i = 0; i < 30 && g.status === "NOT_FOUND"; i++) {
-    await new Promise((r) => setTimeout(r, 1000));
-    g = await server.getTransaction(sent.hash);
-  }
-  if (g.status !== "SUCCESS") throw new Error(`tx ${sent.hash} ${g.status}`);
-  return sent.hash;
+  return url ? (((await (await fetch(url)).json()) as { poolId?: string | null }).poolId ?? null) : null;
 }
 
 async function main() {
@@ -91,37 +56,20 @@ async function main() {
   const client = new RegistryClient(REGISTRY, server, PASS, publisher.publicKey());
   console.log(`registry ${REGISTRY} · publishers ${(await client.publishers()).length} · threshold ${await client.threshold()}`);
   console.log(`publishing ${ratings.length} ${engineVersion} ratings computed at ${new Date(computedAt * 1000).toISOString()} as ${publisher.publicKey()}`);
-
-  // The registry rejects timestamps in the future and older than its max age;
-  // the engine's computedAt is mainnet chain time, which is what we sign.
-  const rated = ratings.filter((r): r is Rated & { score: number } => r.score !== null);
-  if (rated.length < ratings.length) console.log(`skipping ${ratings.length - rated.length} not-rated (NR) pools`);
-  const inputs: RatingInput[] = rated.map((r) => ({
-    pool: r.poolId,
-    score: r.score,
-    timestamp: BigInt(computedAt),
-    reasonsHash: r.reasonsHash,
-  }));
-  const mirror = await execMirror(ratings, BigInt(computedAt));
-  if (mirror) inputs.push(mirror);
-  let failed = 0;
-  for (let i = 0; i < inputs.length; i += 8) {
-    const chunk = inputs.slice(i, i + 8);
-    const tx = new TransactionBuilder(await server.getAccount(publisher.publicKey()), { fee: "10000000", networkPassphrase: PASS })
-      .addOperation(client.publishBatchOp(publisher.publicKey(), chunk))
-      .setTimeout(120)
-      .build();
-    try {
-      const prepared = await server.prepareTransaction(tx);
-      prepared.sign(publisher);
-      console.log(`  publish_batch ${i + 1}–${i + chunk.length}: ${await send(prepared)}`);
-    } catch (e) {
-      const msg = (e as Error).message;
-      const v = decodeVigilError(msg);
-      console.log(`  publish_batch ${i + 1}–${i + chunk.length} FAILED: ${v ? `${v.code} ${v.name}` : msg.split("\n")[0]}`);
-      failed++;
-    }
-  }
+  const execPoolId = process.env.VIGIL_EXEC_POOL_ID;
+  const outcome = await publishRatings({
+    server,
+    networkPassphrase: PASS,
+    registryId: REGISTRY,
+    publisher,
+    engineVersion,
+    computedAt,
+    ratings,
+    execPoolId,
+    heldPoolId: execPoolId ? await heldPool() : null,
+    log: console.log,
+  });
+  if (outcome.skippedNotRated) console.log(`skipped ${outcome.skippedNotRated} not-rated (NR) pools`);
 
   console.log("\non-chain aggregates (get_rating):");
   for (const r of ratings) {
@@ -130,11 +78,11 @@ async function main() {
       `  ${r.name.slice(0, 24).padEnd(24)} ${r.poolId.slice(0, 6)}…  engine ${String(r.score ?? "NR").padStart(3)} ${r.grade}  →  registry ${agg ? `${agg.score} (${agg.publishers} publisher)` : "none"}`,
     );
   }
-  if (mirror) {
-    const agg = await client.getRating(mirror.pool);
-    console.log(`  ${"exec pool (testnet)".padEnd(24)} ${mirror.pool.slice(0, 6)}…  stand-in ${String(mirror.score).padStart(3)}    →  registry ${agg ? agg.score : "none"}`);
+  if (execPoolId) {
+    const agg = await client.getRating(execPoolId);
+    console.log(`  ${"exec pool (testnet)".padEnd(24)} ${execPoolId.slice(0, 6)}…  →  registry ${agg ? agg.score : "none"}`);
   }
-  if (failed) process.exitCode = 1;
+  if (outcome.failures.length) process.exitCode = 1;
 }
 
 main().catch((e) => {

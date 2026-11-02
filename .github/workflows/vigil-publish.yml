@@ -1,16 +1,14 @@
-# Vigil publisher (1-of-1 today), twice an hour: refreshes the live ratings on
-# yieldpilot.org and signs them into the testnet RiskRegistry, so get_rating
-# stays fresh (the registry and the RiskGate reject ratings older than 2 h).
-# Twice, because GitHub delays or drops scheduled runs under load; off the
-# top of the hour, its busiest time.
+# Manual Vigil publisher: refreshes the live ratings on yieldpilot.org and
+# signs them into the testnet RiskRegistry from GitHub, with the same code as
+# the deployment's own publisher (/api/cron/publish, every 30 minutes). Run it
+# by hand as a backup; its schedule was dropped because GitHub never started a
+# scheduled run of it.
 # The key is a testnet-only publisher key held as a repository secret; it can
 # only publish ratings, not move funds. Each run's input, with the per-pool data
 # every reasonsHash covers, is kept as an artifact for 90 days.
 name: vigil-publish
 
 on:
-  schedule:
-    - cron: "17,47 * * * *"
   workflow_dispatch:
 
 permissions:

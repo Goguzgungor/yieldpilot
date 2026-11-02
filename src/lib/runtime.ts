@@ -30,6 +30,7 @@ import {
 } from "./serialize";
 import type { Position, ScoredPool, Decision, YieldSource } from "./types";
 import { computeLiveRatings, type RatingsJson } from "./vigil/service";
+import { nextRunIndex, packRun, publishRatings, unpackRun, type PublishOutcome } from "./vigil/publish";
 import { gateByVigil, vigilCandidatePools, type VigilVerdict } from "./vigilGate";
 
 /** Latest agent decision exposed to the UI (chosen pool + rationale + action). */
@@ -675,7 +676,7 @@ export async function getDecision(): Promise<LatestDecision> {
 /**
  * The cached Vigil ratings, if computed within `maxAgeSec` (the guard's own
  * max age), else null. Never recomputes: the tick has 60 s and a run takes ~90 s;
- * the hourly publisher keeps the cache fresh through /api/ratings?refresh=1.
+ * the publisher (/api/cron/publish) keeps the cache fresh.
  */
 async function cachedVigilVerdicts(rt: Runtime, maxAgeSec: number): Promise<VigilVerdict[] | null> {
   const [raw, atRaw] = await Promise.all([rt.db.getKV("vigilRatings"), rt.db.getKV("vigilRatingsAt")]);
@@ -775,4 +776,69 @@ export async function refreshExpiredRatings(): Promise<void> {
   } catch {
     /* the next read retries */
   }
+}
+
+// ── Vigil publishing ───────────────────────────────────────────────────────
+
+/** A publish run started this recently (on any instance) is left to finish. */
+const PUBLISH_LEASE_MS = 4 * 60 * 1000;
+
+export type LastPublish = PublishOutcome & { at: number };
+
+/**
+ * The publisher's run (/api/cron/publish): refresh the ratings if the cache is
+ * over 5 minutes old, archive the run's input, and sign it into the RiskRegistry
+ * with the publisher key. Returns null when another run holds the lease.
+ */
+export async function publishVigilRatings(publisherSecret: string): Promise<LastPublish | null> {
+  const rt = getRuntime();
+  const registryId = rt.cfg.vigilGuard.registry;
+  if (!registryId) throw new Error("the rating gate is off (VIGIL_REGISTRY_ID=off): no registry to publish to");
+  const lease = Number((await rt.db.getKV("vigilPublishAt")) ?? 0) || 0;
+  if (Date.now() - lease < PUBLISH_LEASE_MS) return null;
+  await rt.db.setKV("vigilPublishAt", String(Date.now()));
+
+  let run = await getRatings();
+  if (Date.now() - run.cachedAt > 5 * 60 * 1000) run = await getRatings({ refresh: true });
+  await archiveRun(rt, run.data);
+  const outcome = await publishRatings({
+    server: new rpc.Server(rt.cfg.execRpcUrl),
+    networkPassphrase: rt.cfg.execNetworkPassphrase,
+    registryId,
+    publisher: Keypair.fromSecret(publisherSecret.trim()),
+    engineVersion: run.data.engineVersion,
+    computedAt: run.data.computedAt,
+    ratings: run.data.ratings,
+    execPoolId: rt.cfg.execPoolId,
+    heldPoolId: (await rt.db.getPosition()).poolId,
+  });
+  const last: LastPublish = { at: Date.now(), ...outcome };
+  await rt.db.setKV("vigilLastPublish", JSON.stringify(last));
+  return last;
+}
+
+export async function getLastPublish(): Promise<LastPublish | null> {
+  const raw = await getRuntime().db.getKV("vigilLastPublish");
+  return raw ? (JSON.parse(raw) as LastPublish) : null;
+}
+
+/** Keep the run's input (what each reasonsHash covers), keyed by the computedAt signed on-chain. */
+async function archiveRun(rt: Runtime, data: RatingsJson): Promise<void> {
+  const raw = await rt.db.getKV("vigilRunIndex");
+  const { index, dropped } = nextRunIndex(raw ? (JSON.parse(raw) as number[]) : [], data.computedAt, Math.floor(Date.now() / 1000));
+  await rt.db.setKV(`vigilRun:${data.computedAt}`, packRun(JSON.stringify(data)));
+  for (const t of dropped) await rt.db.setKV(`vigilRun:${t}`, "");
+  await rt.db.setKV("vigilRunIndex", JSON.stringify(index));
+}
+
+/** The computedAt of every archived run, ascending. */
+export async function listArchivedRuns(): Promise<number[]> {
+  const raw = await getRuntime().db.getKV("vigilRunIndex");
+  return raw ? (JSON.parse(raw) as number[]) : [];
+}
+
+/** An archived run's JSON, or null. */
+export async function getArchivedRun(computedAt: number): Promise<string | null> {
+  const packed = await getRuntime().db.getKV(`vigilRun:${computedAt}`);
+  return packed ? unpackRun(packed) : null;
 }
