@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ApiError, createApi } from "../../scripts/loadtest/api";
 import type { requestJson } from "../../scripts/loadtest/http";
+import { ownerMessage } from "../../src/lib/ownerMessage";
 
 const BASE = "http://localhost:3100";
 type Call = { method: string; url: string; body: unknown; timeoutMs: number | undefined };
@@ -59,17 +60,28 @@ describe("createApi", () => {
     const f = fake(200, { ok: true, txHash: "m1" });
     const api = createApi(BASE, { request: f.request });
     expect(await api.faucet("CSA", 250)).toEqual({ txHash: "m1" });
-    await api.register({ owner: "G", smartWallet: "C", poolRuleId: 1, usdcRuleId: 2 });
+    const signed: string[] = [];
+    await api.register({ owner: "G", smartWallet: "C", poolRuleId: 1, usdcRuleId: 2 }, (m) => (signed.push(m), "SIG"));
     expect(f.calls.map((c) => [c.url, c.body])).toEqual([
       [`${BASE}/api/faucet`, { to: "CSA", amount: 250 }],
-      [`${BASE}/api/register`, { owner: "G", smartWallet: "C", poolRuleId: 1, usdcRuleId: 2 }],
+      [`${BASE}/api/register`, { owner: "G", smartWallet: "C", poolRuleId: 1, usdcRuleId: 2, signedAt: expect.any(String), signature: "SIG" }],
     ]);
+    // the wallet signs the same message the UI asks Freighter to sign
+    const { signedAt } = f.calls[1].body as { signedAt: string };
+    expect(signed).toEqual([ownerMessage({ action: "register", owner: "G", smartWallet: "C", poolRuleId: 1, usdcRuleId: 2 }, signedAt)]);
   });
 
-  it("unregister puts the owner in the query string", async () => {
+  it("unregister sends the owner's signed request in the body", async () => {
     const f = fake(200, { ok: true, removed: true });
-    expect(await createApi(BASE, { request: f.request }).unregister("GOWN")).toEqual({ removed: true });
-    expect(f.calls[0]).toMatchObject({ method: "DELETE", url: `${BASE}/api/register?owner=GOWN` });
+    const signed: string[] = [];
+    expect(await createApi(BASE, { request: f.request }).unregister("GOWN", (m) => (signed.push(m), "SIG"))).toEqual({ removed: true });
+    expect(f.calls[0]).toMatchObject({
+      method: "DELETE",
+      url: `${BASE}/api/register`,
+      body: { owner: "GOWN", signedAt: expect.any(String), signature: "SIG" },
+    });
+    const { signedAt } = f.calls[0].body as { signedAt: string };
+    expect(signed).toEqual([ownerMessage({ action: "unregister", owner: "GOWN" }, signedAt)]);
   });
 
   it("tick waits without a client timeout and carries the cron key", async () => {
@@ -80,7 +92,7 @@ describe("createApi", () => {
 
   it("maps failures to ApiError: 4xx permanent, 5xx and unreachable transient, cron key never in the message", async () => {
     const reg = { owner: "G", smartWallet: "C", poolRuleId: 1, usdcRuleId: 2 };
-    const e400 = await createApi(BASE, { request: fake(400, { error: "invalid body" }).request }).register(reg).catch((e) => e);
+    const e400 = await createApi(BASE, { request: fake(400, { error: "invalid body" }).request }).register(reg, () => "SIG").catch((e) => e);
     expect(e400).toBeInstanceOf(ApiError);
     expect(e400.permanent).toBe(true);
     expect(e400.message).toContain("invalid body");

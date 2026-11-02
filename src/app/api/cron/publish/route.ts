@@ -1,5 +1,5 @@
-import { timingSafeEqual } from "node:crypto";
 import { after, NextResponse } from "next/server";
+import { requestHasKey } from "../../../../lib/routeKey";
 import { getLastPublish, publishVigilRatings } from "../../../../lib/runtime";
 
 export const dynamic = "force-dynamic";
@@ -20,19 +20,11 @@ export const maxDuration = 300;
  * VIGIL_PUBLISHER_SECRET, the publisher's testnet key (it can only publish
  * ratings, not move funds).
  */
-function authorized(req: Request, key: string): boolean {
-  const given =
-    req.headers.get("authorization")?.replace(/^Bearer /, "") ?? new URL(req.url).searchParams.get("key") ?? "";
-  const a = Buffer.from(given);
-  const b = Buffer.from(key);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
-
 export async function GET(req: Request) {
   const key = process.env.VIGIL_PUBLISH_KEY?.trim();
   const secret = process.env.VIGIL_PUBLISHER_SECRET?.trim();
   if (!key || !secret) return NextResponse.json({ error: "publisher not configured" }, { status: 503 });
-  if (!authorized(req, key)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!requestHasKey(req, key)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   after(async () => {
     try {
       await publishVigilRatings(secret);

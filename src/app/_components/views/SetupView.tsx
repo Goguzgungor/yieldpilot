@@ -15,13 +15,13 @@ const HINTS: Record<StepKey, string> = {
   deploy: "your own OpenZeppelin account · Varial",
   authorize: "guarded pool access + USDC capped at 5,000 a day · Varial",
   fund: "straight into the account, none needed",
-  register: "hand it to the agent loop",
+  register: "hand it to the agent loop · Varial",
 };
 const WORKING: Record<StepKey, string> = {
   deploy: "confirm in Varial…",
   authorize: "confirm both rules in Varial…",
   fund: "minting test USDC…",
-  register: "recording your account…",
+  register: "sign the activation in Varial…",
 };
 const NUMERALS = ["I", "II", "III", "IV"];
 

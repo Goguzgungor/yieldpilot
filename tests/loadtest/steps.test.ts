@@ -8,6 +8,7 @@ import type { ChainOps } from "../../scripts/loadtest/chain";
 import { openRunDir, type RunFiles } from "../../scripts/loadtest/manifest";
 import type { PlanEvent } from "../../scripts/loadtest/schedule";
 import { runEvent, type StepCtx } from "../../scripts/loadtest/steps";
+import { signOwnerMessage } from "../../src/lib/ownerAuth";
 
 const wallets = [Keypair.random(), Keypair.random()];
 const tmpFiles = () => openRunDir(mkdtempSync(join(tmpdir(), "ys-lt-")));
@@ -64,7 +65,10 @@ describe("onboard", () => {
     const sign = vi.mocked(api.authorize).mock.calls[0][2];
     expect(sign("RULE_XDR")).toBe("signed:RULE_XDR");
     expect(api.faucet).toHaveBeenCalledWith("CSA0", 250);
-    expect(api.register).toHaveBeenCalledWith({ owner: owner0, smartWallet: "CSA0", poolRuleId: 1, usdcRuleId: 2 });
+    expect(api.register).toHaveBeenCalledWith({ owner: owner0, smartWallet: "CSA0", poolRuleId: 1, usdcRuleId: 2 }, expect.any(Function));
+    // the wallet itself signs the registration (SEP-53, like Freighter's signMessage)
+    const signMessage = vi.mocked(api.register).mock.calls[0][1];
+    expect(signMessage("m")).toBe(signOwnerMessage(wallets[0], "m"));
     expect(ctx.files.read().at(-1)).toEqual(rec);
   });
 
@@ -169,7 +173,9 @@ describe("after onboarding", () => {
   it("unregister forgets the owner", async () => {
     const ctx = await onboarded();
     const rec = await runEvent(ctx, { id: "unregister:w00", atMin: 90, kind: "unregister", wallet: 0 }, 0);
-    expect(ctx.api.unregister).toHaveBeenCalledWith(owner0);
+    expect(ctx.api.unregister).toHaveBeenCalledWith(owner0, expect.any(Function));
+    const signMessage = vi.mocked(ctx.api.unregister).mock.calls[0][1];
+    expect(signMessage("m")).toBe(signOwnerMessage(wallets[0], "m"));
     expect(rec.data).toMatchObject({ removed: true, smartWallet: "CSA0" });
   });
 

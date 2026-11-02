@@ -3,6 +3,7 @@
  * (src/app/_components/useOnboarding.ts), plus /api/tick and the read routes
  * used for snapshots. The load test drives the product only through these.
  */
+import { ownerMessage } from "../../src/lib/ownerMessage";
 import { requestJson, type JsonResponse } from "./http";
 
 /** A non-2xx (or unreachable, status 0) answer from a YieldPilot route. */
@@ -45,8 +46,12 @@ export interface YsApi {
     sign: (xdr: string) => string,
   ): Promise<{ poolRuleId: number; usdcRuleId: number; hashes: string[] }>;
   faucet(to: string, amountUsdc: number): Promise<{ txHash: string }>;
-  register(body: RegisterBody): Promise<void>;
-  unregister(owner: string): Promise<{ removed: boolean }>;
+  /**
+   * Both carry the owner's signature, as the UI gets it from Freighter's
+   * signMessage (`signMessage` = SEP-53 sign, base64).
+   */
+  register(body: RegisterBody, signMessage: (message: string) => string): Promise<void>;
+  unregister(owner: string, signMessage: (message: string) => string): Promise<{ removed: boolean }>;
   tick(): Promise<{ ranAt: string }>;
   get(path: string): Promise<unknown>;
 }
@@ -118,11 +123,15 @@ export function createApi(baseUrl: string, opts: { request?: typeof requestJson;
       const d = await call<Body & { txHash: string }>("POST", "/api/faucet", { to, amount: amountUsdc });
       return { txHash: d.txHash };
     },
-    async register(body) {
-      await call("POST", "/api/register", body);
+    async register(body, signMessage) {
+      const signedAt = new Date().toISOString();
+      const signature = signMessage(ownerMessage({ action: "register", ...body }, signedAt));
+      await call("POST", "/api/register", { ...body, signedAt, signature });
     },
-    async unregister(owner) {
-      const d = await call<Body & { removed: boolean }>("DELETE", `/api/register?owner=${encodeURIComponent(owner)}`);
+    async unregister(owner, signMessage) {
+      const signedAt = new Date().toISOString();
+      const signature = signMessage(ownerMessage({ action: "unregister", owner }, signedAt));
+      const d = await call<Body & { removed: boolean }>("DELETE", "/api/register", { owner, signedAt, signature });
       return { removed: d.removed };
     },
     async tick() {

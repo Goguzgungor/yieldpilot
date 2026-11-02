@@ -4,6 +4,7 @@
  * up exactly where a crash left it — never a second deploy, authorize or mint.
  */
 import type { Keypair } from "@stellar/stellar-sdk";
+import { signOwnerMessage } from "../../src/lib/ownerAuth";
 import { ApiError, type YsApi } from "./api";
 import type { ChainOps } from "./chain";
 import { stepsFor, walletStates, type EventRecord, type RunFiles, type StepRecord } from "./manifest";
@@ -111,7 +112,9 @@ async function onboard(ctx: StepCtx, ev: Ev<"onboard">): Promise<Result> {
 
   // 4 — register.
   if (!done.has("register")) {
-    await withRetry(ctx, `${ev.id} register`, () => ctx.api.register({ owner, smartWallet: sw, ...r }));
+    await withRetry(ctx, `${ev.id} register`, () =>
+      ctx.api.register({ owner, smartWallet: sw, ...r }, (m) => signOwnerMessage(kp, m)),
+    );
     checkpoint(ctx, ev, "register", []);
   }
   return { hashes, data: { owner, smartWallet: sw, ...r, fundUsdc: ev.fundUsdc } };
@@ -161,7 +164,8 @@ async function topup(ctx: StepCtx, ev: Ev<"topup">): Promise<Result> {
 async function unregister(ctx: StepCtx, ev: Ev<"unregister">): Promise<Result> {
   const state = walletStates(ctx.files.read()).get(ev.wallet);
   if (!state) throw new SkipEvent(`wallet ${ev.wallet} was never onboarded`);
-  const r = await withRetry(ctx, ev.id, () => ctx.api.unregister(state.owner));
+  const kp = ctx.wallet(ev.wallet);
+  const r = await withRetry(ctx, ev.id, () => ctx.api.unregister(state.owner, (m) => signOwnerMessage(kp, m)));
   return { hashes: [], data: { owner: state.owner, smartWallet: state.smartWallet, removed: r.removed } };
 }
 

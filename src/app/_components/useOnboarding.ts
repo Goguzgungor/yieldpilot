@@ -1,12 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { ownerMessage, signatureToBase64, type OwnerRequest } from "../../lib/ownerMessage";
 
 // NOTE: this hook is intentionally free of any `@stellar/stellar-sdk` import so
 // the browser bundle never pulls in the SDK (it relies on Node built-ins). All
 // transaction building / simulation / submission happens server-side
 // (`/api/onboard/*`); the client only runs Freighter's `signTransaction` on a
-// server-prepared XDR and POSTs the signed XDR back.
+// server-prepared XDR and POSTs the signed XDR back, and `signMessage` for the
+// owner's signature on a registration change (src/lib/ownerMessage.ts).
 
 const EXEC_NETWORK_PASSPHRASE = "Test SDF Network ; September 2015";
 
@@ -80,9 +82,14 @@ async function postJson<T>(url: string, body: unknown): Promise<{ ok: boolean; s
   }
 }
 
-async function deleteJson<T>(url: string): Promise<{ ok: boolean; status: number; data: T | null }> {
+async function deleteJson<T>(url: string, body: unknown): Promise<{ ok: boolean; status: number; data: T | null }> {
   try {
-    const res = await fetch(url, { method: "DELETE", cache: "no-store" });
+    const res = await fetch(url, {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+      cache: "no-store",
+    });
     const data = res.headers.get("content-type")?.includes("application/json")
       ? ((await res.json()) as T)
       : null;
@@ -90,6 +97,25 @@ async function deleteJson<T>(url: string): Promise<{ ok: boolean; status: number
   } catch {
     return { ok: false, status: 0, data: null };
   }
+}
+
+/**
+ * The owner's signature on a registration change: Freighter `signMessage`
+ * (SEP-53) of {@link ownerMessage}. `/api/register` refuses the change without it.
+ */
+async function signAsOwner(req: OwnerRequest): Promise<{ signedAt: string; signature: string }> {
+  const signedAt = new Date().toISOString();
+  const api = await import("@stellar/freighter-api");
+  const res = await api.signMessage(ownerMessage(req, signedAt), {
+    networkPassphrase: EXEC_NETWORK_PASSPHRASE,
+    address: req.owner,
+  });
+  const signature = signatureToBase64(res.signedMessage);
+  if (res.error || !signature) {
+    const why = typeof res.error === "string" ? res.error : (res.error?.message ?? "no signature");
+    throw new Error(`Varial message signing failed (${why})`);
+  }
+  return { signedAt, signature };
 }
 
 /**
@@ -198,8 +224,8 @@ export interface OnboardingState {
   /** Reset the local step UI (does not touch the server registry). */
   reset: () => void;
   /**
-   * DEMO RESET: forget THIS user's registration in the in-memory registry
-   * (`DELETE /api/register?owner=…`) so the onboarding re-appears, then re-pull
+   * DEMO RESET: forget THIS user's registration (`DELETE /api/register`, signed
+   * by the owner in Freighter) so the onboarding re-appears, then re-pull
    * status. Used by the "Reset demo" affordance in the registered view.
    */
   resetDemo: () => Promise<void>;
@@ -306,15 +332,23 @@ export function useOnboarding(ownerAddress: string | null): OnboardingState {
     if (!ownerAddress || resetting) return;
     setResetting(true);
     setError(null);
-    await deleteJson<{ ok: boolean; removed: boolean }>(
-      `/api/register?owner=${encodeURIComponent(ownerAddress)}`,
-    );
-    // Back to a clean onboarding slate, then re-pull status (now 404 ⇒ false).
-    setSteps(INITIAL_STEPS);
-    setSmartWallet(null);
-    setSaUsdcStroops(null);
-    await fetchStatus(ownerAddress);
-    setResetting(false);
+    try {
+      const signed = await signAsOwner({ action: "unregister", owner: ownerAddress });
+      const res = await deleteJson<{ ok: boolean; removed: boolean; error?: string }>("/api/register", {
+        owner: ownerAddress,
+        ...signed,
+      });
+      if (!res.ok) throw new Error(`reset failed: ${res.data?.error ?? `HTTP ${res.status}`}`);
+      // Back to a clean onboarding slate, then re-pull status (now 404 ⇒ false).
+      setSteps(INITIAL_STEPS);
+      setSmartWallet(null);
+      setSaUsdcStroops(null);
+      await fetchStatus(ownerAddress);
+    } catch (e) {
+      setError((e as Error).message || "reset failed");
+    } finally {
+      setResetting(false);
+    }
   }, [ownerAddress, resetting, fetchStatus]);
 
   const start = useCallback(
@@ -379,16 +413,17 @@ export function useOnboarding(ownerAddress: string | null): OnboardingState {
         setSaUsdcStroops(fund.balanceStroops);
         setStep("fund", { status: "done", detail: `${amountUsdc} USDC → smart account`, txHash: fund.txHash });
 
-        // ── STEP 4: register the user (records the SA + rule ids) ──
+        // ── STEP 4: register the user (records the SA + rule ids), signed by the owner ──
+        setStep("register", { status: "active", detail: "sign the activation in Varial…" });
+        const registration = { owner: ownerAddress, smartWallet: contractId, poolRuleId, usdcRuleId };
+        const signed = await signAsOwner({ action: "register", ...registration });
         setStep("register", { status: "active", detail: "recording your smart account…" });
-        const regRes = await postJson<{ ok: boolean; user: RegisteredUser }>("/api/register", {
-          owner: ownerAddress,
-          smartWallet: contractId,
-          poolRuleId,
-          usdcRuleId,
+        const regRes = await postJson<{ ok: boolean; user: RegisteredUser; error?: string }>("/api/register", {
+          ...registration,
+          ...signed,
         });
         if (!regRes.ok || !regRes.data?.ok) {
-          throw new Error(`register failed: HTTP ${regRes.status}`);
+          throw new Error(`register failed: ${regRes.data?.error ?? `HTTP ${regRes.status}`}`);
         }
         setStep("register", { status: "done", detail: "agent now managing your USDC" });
 

@@ -69,7 +69,7 @@ export default function AccountView({ user, onBack, onDisconnect, onResetDemo, r
         </table>
         <p className="pair">
           <button className="underline" onClick={onDisconnect}>Disconnect</button>
-          <button className="quiet" onClick={onResetDemo} disabled={resetting} title="Forget this wallet in the demo registry; the on-chain account is untouched">
+          <button className="quiet" onClick={onResetDemo} disabled={resetting} title="Forget this wallet's registration, with one Varial signature; the on-chain account is untouched">
             {resetting ? "Resetting…" : "Reset demo"}
           </button>
         </p>
