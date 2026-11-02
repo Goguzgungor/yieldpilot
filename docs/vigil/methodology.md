@@ -237,27 +237,29 @@ Runs archived before 2026-11-02's change kept a summary of each order book only,
 | **Comet LP today** (the V2 backstop's LP token) | Holds 387.76 BLND and 0.64 USDC against a total supply of about 1.86e20 LP tokens (raw `get_total_supply` = 1.86e27 stroops) **[chain]**. As a result, the V2 backstop's `pool_data(..)` returns `blnd = 0` and `usdc = 0` for **every V2 pool** **[chain]**: their backstop insurance is worth about $0 today. | **[chain]** |
 | **Blend v2.1, 2026-09-30** | Blend relaunched the same pool code with a new backstop (`CCS4AZ…`) whose LP is built from Comet v1.1.0, and a new factory. Its one pool, Fixed v2.1 `CBAKAZ…`, is Active with 7.14M BLND and 11,820 USDC behind it, 44.5% of it queued for withdrawal on 2026-11-01 **[chain]**. | blend-ui PR #238; **[chain]** |
 
-## 7. Live results (mainnet, engine v2.4.0, computedAt 2026-11-02T13:50:54Z, 94 s run)
+## 7. Live results (mainnet, engine v2.5.0, computedAt 2026-11-02T16:02:24Z, the deployment's run)
+
+This is the run the deployment published at 16:02 UTC, archived as [`/api/ratings/runs?at=1793635344`](https://yieldpilot.org/api/ratings/runs?at=1793635344); `npx tsx scripts/vigil-verify.ts 1793635344` recomputes all 17 hashes and re-rates every pool from it. The deployment's 24 h book window and 6 h utilization window are in its inputs; a CLI run without them (`scripts/vigil-ratings.ts` with no history files) sees only the books and reads of that moment.
 
 ```
 coverage: 13 pools found [stellar-expert:factory-deploy-events:v2=12, rpc:backstop-reward-zone+recent-deploy-events:v2=0,
           stellar-expert:factory-deploy-events:v2.1=1, rpc:backstop-reward-zone+recent-deploy-events:v2.1=1, curated=2],
           rated 13, failed 0, unverified 0, rejected 0
 protocol | name                   | id      | status         | dep  | scr | unc | G  | elg |       TVL | weakest factor
-blend    | Fixed v2.1             | CBAKAZ… | 1 Active       | v2.1 |  64 |  87 | C  | no  |   $146.9K | utilization=0
-blend    | Fixed                  | CAJJZS… | 3 On_Ice       | v2   |  57 |  75 | C  | yes |  $169.56M | backstop_coverage=0
+blend    | Fixed v2.1             | CBAKAZ… | 1 Active       | v2.1 |  64 |  89 | C  | no  |   $149.2K | utilization=14.4
+blend    | Fixed                  | CAJJZS… | 3 On_Ice       | v2   |  57 |  75 | C  | yes |  $168.83M | backstop_coverage=0
 blend    | Etherfuse              | CDMAVJ… | 4 Admin_Frozen | v2   |  53 |  60 | C  | no  |    $15.2K | backstop_coverage=0
-blend    | YieldBlox              | CCCCIQ… | 3 On_Ice       | v2   |  51 |  53 | C  | no  |   $157.5K | backstop_coverage=0
-blend    | Orbit                  | CAE7QV… | 4 Admin_Frozen | v2   |  34 |  54 | E  | no  |   $190.8K | supply_caps=0
-blend    | Forex                  | CBYOBT… | 5 Frozen       | v2   |  NR |   - | NR | no  |      $459 | oracle_freshness=0
-blend    | Solv                   | CC4HHX… | 3 On_Ice       | v2   |  NR |   - | NR | no  |      $174 | backstop_coverage=50
+blend    | YieldBlox              | CCCCIQ… | 3 On_Ice       | v2   |  51 |  53 | C  | no  |   $157.3K | backstop_coverage=0
+blend    | Orbit                  | CAE7QV… | 4 Admin_Frozen | v2   |  34 |  50 | E  | no  |   $190.8K | supply_caps=0
+blend    | Forex                  | CBYOBT… | 5 Frozen       | v2   |  NR |   - | NR | no  |      $456 | oracle_freshness=0
+blend    | Solv                   | CC4HHX… | 3 On_Ice       | v2   |  NR |   - | NR | no  |      $173 | backstop_coverage=50
 blend    | Spectra PTs            | CDZVHC… | 2 Admin_On_Ice | v2   |  NR |   - | NR | no  |       $10 | oracle_source=50
 blend    | YieldBlox              | CBNR7P… | 6 Setup        | v2   |  NR |   - | NR | no  |        $0 | oracle_source=50
 blend    | Orbit                  | CB4OFH… | 6 Setup        | v2   |  NR |   - | NR | no  |        $0 | oracle_source=50
 blend    | Etherfuse              | CALRF5… | 6 Setup        | v2   |  NR |   - | NR | no  |        $0 | oracle_source=0
 blend    | Etherfuse              | CADR6Q… | 6 Setup        | v2   |  NR |   - | NR | no  |        $0 | oracle_source=45
 blend    | New Fixed              | CAIYBZ… | 6 Setup        | v2   |  NR |   - | NR | no  |        $0 | backstop_coverage=50
-defindex | DeFindex USDC Fixed    | CDB2WM… | 3 On_Ice       | v2   |  57 |  75 | C  | yes |   $18.81M | underlying_pool=57
+defindex | DeFindex USDC Fixed    | CDB2WM… | 3 On_Ice       | v2   |  57 |  75 | C  | yes |   $18.80M | underlying_pool=57
 defindex | DeFindex EURC Fixed    | CC5CE6… | 3 On_Ice       | v2   |  57 |  75 | C  | yes |    $19.2K | underlying_pool=57
 defindex | DeFindex XLM Fixed     | CDPWNU… | 3 On_Ice       | v2   |  57 |  75 | C  | yes |     $7.1K | underlying_pool=57
 defindex | DeFindex USDC Etherfus | CCBTSH… | 4 Admin_Frozen | v2   |  53 |  60 | C  | no  |        $7 | underlying_pool=53
@@ -265,11 +267,11 @@ defindex | DeFindex USDC Etherfus | CCBTSH… | 4 Admin_Frozen | v2   |  53 |  6
 
 **Reading the table:**
 
-- **Fixed v2.1 is C 64 and not eligible (HR10).** Its USDC reserve is 96.1% borrowed against its own 90% `max_util`: of $43.6K supplied, $1.7K can be withdrawn. Its setup scores 87 uncapped. Under v2.3 it was B 74, the only pool above RiskGate's default minimum of 60, held to B by HR7 (44.5% of its backstop is queued to leave). Its path back is market-side: borrowers repaying or lenders adding USDC.
+- **Fixed v2.1 is C 64 and not eligible (HR10, 6 h window).** At 13:59 UTC its USDC reserve was 96.1% borrowed against its own 90% `max_util`: of $43.6K supplied, $1.7K could be withdrawn. A ~$3K deposit brought it to 89.9% by 14:32 ($4.7K of $46.6K withdrawable). v2.4 read only the current state and graded that 14:32 run B 75, eligible, and it was published at 75; from the 15:02 run v2.5 holds HR10 for 6 h after the 13:59 read, so the pool stays not eligible until 19:59 UTC if no later read reaches `max_util`. Its setup scores 89 uncapped. Under v2.3 it was B 74, held to B by HR7 (44.5% of its backstop is queued to leave). Its path back is market-side: borrowers repaying or lenders adding USDC.
 - **Fixed (V2) is C 57 (HR9).** Its backstop covers $0 of $39.6M of borrows. Its setup scores 75 uncapped (CEX-priced collateral, no SDEX exposure), so it stays eligible, but at C: lenders carry the first loss. DeFindex's three Fixed strategies, $18.8M of them in USDC, inherit C 57. Its path to B and A is the backstop, which Blend's app takes for v2.1 pools only.
 - **YieldBlox is not eligible (HR8)**: 97.8% of its backstop is queued, so one `update_status` call would freeze it. It is C 51 (HR9 as well).
-- **Orbit `CAE7QV…` is E 34 in this run (HR3).** Pushing CETES ×100 on SDEX costs about $148K, plus $2.1K of collateral, to borrow $180K (ρ 0.83). Its grade moved in and out of E on 2026-11-01 as its CETES book changed ($275 at 15:07 UTC, $253K at 19:17, $268 at 20:19). Since v2.3 it is rated on the thinnest book of the last 24 h, so once a thin book has been read the grade stays E for a day instead of flipping back within the hour. The pool is Admin_Frozen either way.
-- **8 pools are NR.** Five never launched (status 6). Forex ($459, whose oracle publishes no price for the three assets borrowed in it), Solv ($174) and Spectra ($10) hold too little to measure.
+- **Orbit `CAE7QV…` is E 34 (HR3).** On the thinnest of the 8 CETES books the deployment read in the last 24 h (10:59 UTC), pushing CETES ×100 on SDEX costs $64.5K, plus $2.1K of collateral, to borrow $180.1K (ρ 0.37). A CLI run at 13:50 UTC, which had only that moment's book, read $148K (ρ 0.83). Its grade moved in and out of E on 2026-11-01 as its CETES book changed ($275 at 15:07 UTC, $253K at 19:17, $268 at 20:19). Since v2.3 it is rated on the thinnest book of the last 24 h, so once a thin book has been read the grade stays E for a day instead of flipping back within the hour. The pool is Admin_Frozen either way.
+- **8 pools are NR.** Five never launched (status 6). Forex ($456, whose oracle publishes no price for the three assets borrowed in it), Solv ($173) and Spectra ($10) hold too little to measure.
 - **4 of 17 ratings accept deposits:** Fixed and DeFindex's three Fixed strategies, all C 57. **No pool reaches the default RiskGate minimum of 60**, so the gate refuses every new deposit until one does. YieldPilot holds; withdrawals are never gated.
 
 ## 8. Backtest: YieldBlox before 22 Feb 2026
