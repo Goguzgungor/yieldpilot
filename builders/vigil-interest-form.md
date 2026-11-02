@@ -31,7 +31,7 @@ It is timely for two reasons. OpenZeppelin smart accounts are becoming the stand
 
 **Current Stage:** Testnet. The engine runs on mainnet data.
 - RiskGate and RiskRegistry are deployed on testnet with 79 contract tests plus one wasm-level test, including a suite that runs against the deployed OpenZeppelin smart-account wasm.
-- The rating engine (v2.5, 157 tests) rates all 13 pools deployed by Blend's V2 and v2.1 factories and 4 DeFindex strategies. On a reconstruction of the YieldBlox pool as configured before its February 2026 exploit, it gives grade E.
+- The rating engine (v2.5, 169 tests) rates all 13 pools deployed by Blend's V2 and v2.1 factories and 4 DeFindex strategies. On a reconstruction of the YieldBlox pool as configured before its February 2026 exploit, it gives grade E.
 - The live deployment publishes the ratings to the testnet registry every 30 minutes and archives each run's inputs for 90 days; `scripts/vigil-verify.ts` recomputes every hash and re-rates every pool from the archive, without keys.
 - On a real testnet smart account and Blend pool, an agent key without RiskGate could withdraw a user's position to another address. With RiskGate, that call, direct transfers out, borrows and low-rating deposits are all rejected, and withdrawals still work.
 - YieldPilot wallets are owned by the user's own wallet; the seven older ones were migrated on 2026-11-02.
