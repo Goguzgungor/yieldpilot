@@ -4,7 +4,7 @@
 
 **Vigil** is the risk layer underneath it, built so other wallets, vault managers and agents can use it too:
 
-- **Risk engine.** `src/lib/vigil`, with the methodology in `docs/vigil/methodology.md`. It rates every pool from Blend's V2 and v2.1 factories, and the DeFindex strategies built on them, from on-chain configuration: oracle source per collateral, SDEX depth over 24 h, backstop, status and reserves. Engine `vigil-risk-v2.3.0`, frozen for the SCF review round.
+- **Risk engine.** `src/lib/vigil`, with the methodology in `docs/vigil/methodology.md`. It rates every pool from Blend's V2 and v2.1 factories, and the DeFindex strategies built on them, from on-chain configuration: oracle source per collateral, SDEX depth over 24 h, backstop, status and reserves. Engine `vigil-risk-v2.4.0`, frozen for the SCF review round.
 - **`vigil-registry`.** A Soroban contract (`contracts/`) where publishers sign ratings and readers get a conservative M-of-N aggregate. Designed for several publishers; today there is one, ours, publishing every 30 minutes from the deployment (`/api/cron/publish`).
 - **`vigil-guard` (RiskGate).** An OpenZeppelin smart-account policy (`contracts/`):
   - Blend calls must keep funds in the user's account.
@@ -41,7 +41,8 @@ The agent applies the same rating check before it chooses (`src/lib/vigilGate.ts
 | User-owned onboarding works end-to-end through the API routes | `scripts/verify-onboarding-owner.ts` |
 | Without the guard, the agent key can withdraw a user's Blend position to another address; with the guard, that call and every other escape route are rejected | `scripts/verify-guard.ts`, results in `contracts/README.md` |
 | Legacy (backend-owned) wallets can be guarded and handed to their users | `scripts/migrate-legacy-accounts.ts` + `src/lib/legacyMigration.ts` (run on all seven: [`docs/legacy-migration-2026-11-02.md`](docs/legacy-migration-2026-11-02.md)), `/api/onboard/prepare` step `finalize-ownership` |
-| Mainnet ratings can be published to the registry and read back on-chain | `src/lib/vigil/publish.ts`, run every 30 minutes by `/api/cron/publish` on yieldpilot.org (an external scheduler calls it: Vercel's Hobby plan runs crons at most daily) and by hand with `scripts/vigil-publish.ts`; each run's input is kept 90 days at `/api/ratings/runs` |
+| Mainnet ratings can be published to the registry and read back on-chain | `src/lib/vigil/publish.ts`, run every 30 minutes by `/api/cron/publish` on yieldpilot.org (an external scheduler calls it: Vercel's Hobby plan runs crons at most daily) and by hand with `scripts/vigil-publish.ts`; each run's full input, order books included, is kept 90 days at `/api/ratings/runs` |
+| Anyone can check a published rating without keys | `npx tsx scripts/vigil-verify.ts [computedAt]` recomputes every reasonsHash of an archived run, re-rates every pool and compares with what the registry holds (`src/lib/vigil/audit.ts`) |
 
 Live ratings for every Blend pool (the V2 and v2.1 deployments) are served at `/ratings` (page) and `/api/ratings` (JSON, served from a cache the publisher recomputes every 30 minutes). The engine also reconstructs the YieldBlox pool as configured before the 22 Feb 2026 exploit and grades it E (`npx tsx scripts/vigil-backtest.ts`).
 
@@ -66,6 +67,7 @@ npm test                         # vitest: app, engine and SDK unit tests (offli
 npx tsc --noEmit                 # typecheck
 cd contracts && cargo test       # Soroban contracts (+ `cargo test -- --ignored` after `stellar contract build`)
 npx tsx scripts/vigil-ratings.ts # live mainnet ratings (read-only, ~90 s)
+npx tsx scripts/vigil-verify.ts  # check the latest published run against its archive and the registry
 npx tsx scripts/vigil-backtest.ts # YieldBlox reconstruction (offline)
 ```
 

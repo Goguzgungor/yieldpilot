@@ -12,7 +12,7 @@ const uninsured = backstop({ usdc: 50_000, blnd: 100_000, meetsThreshold: false 
 
 describe("v2.1 scoring", () => {
   it("weights still sum to 1, with no pool_status factor", () => {
-    expect(ENGINE_VERSION).toMatch(/^vigil-risk-v2\.[123]\./);
+    expect(ENGINE_VERSION).toMatch(/^vigil-risk-v2\.[1234]\./);
     expect("pool_status" in WEIGHTS).toBe(false);
     expect(Object.values(WEIGHTS).reduce((a, b) => a + b, 0)).toBeCloseTo(1, 10);
   });
@@ -65,8 +65,8 @@ describe("v2.1 scoring", () => {
         poolId: cid("s2"),
         backstop: uninsured,
         reserves: [
-          // ~78% pool utilization: same setup, more borrowing pressure
-          reserve("USDC", { source: src("base"), supplied: 2_000_000, borrowed: 1_900_000, cFactor: 0.95, lFactor: 0.95 }),
+          // ~78% pool utilization: same setup, more borrowing pressure (USDC under its max_util, so HR10 stays out of it)
+          reserve("USDC", { source: src("base"), supplied: 2_000_000, borrowed: 1_900_000, cFactor: 0.95, lFactor: 0.95, maxUtil: 0.97 }),
           reserve("XLM", { priceUsd: 0.2, supplied: 10_000_000, borrowed: 6_000_000, cFactor: 0.75, lFactor: 0.75, maxUtil: 0.7 }),
         ],
       }),

@@ -21,7 +21,7 @@ import {
   type DexDepthSample,
 } from "./types";
 
-export const ENGINE_VERSION = "vigil-risk-v2.3.0";
+export const ENGINE_VERSION = "vigil-risk-v2.4.0";
 
 /**
  * Factor weights (sum = 1). v2.1 dropped the pool_status factor: Blend's
@@ -106,6 +106,8 @@ export const HARD_CAPS = {
   unverifiableCollateralSource: 64,
   /** any collateral priced below THRESHOLDS.robustSourceQuality ⇒ grade ≤ B (an A needs robust feeds) */
   weakCollateralSource: 79,
+  /** a reserve borrowed to or past its own max_util, so its lenders can withdraw only what is not borrowed ⇒ grade ≤ C, not eligible */
+  lendersLockedIn: 64,
 } as const;
 
 export const THRESHOLDS = {
@@ -515,6 +517,24 @@ export function pendingFreeze(s: PoolSnapshot): string | null {
 }
 
 /**
+ * Why lenders cannot get out (HR10), or null: a reserve with material supply is
+ * borrowed to or past its own max_util. Blend lends no more of it there, and its
+ * lenders can withdraw only what is not borrowed until borrowers repay. A
+ * reserve without a price is left out (its supply cannot be measured; HR2
+ * already applies).
+ */
+export function lendersLockedIn(d: Derived[]): string | null {
+  const locked = d.filter((x) => x.suppliedUsd >= THRESHOLDS.minLiquidityUsd && x.r.maxUtil > 0 && x.r.borrowed / x.r.supplied >= x.r.maxUtil);
+  if (!locked.length) return null;
+  return locked
+    .map((x) => {
+      const u = x.r.borrowed / x.r.supplied;
+      return `${x.r.symbol} is ${pct(u)} borrowed, ${u > x.r.maxUtil ? "past" : "at"} its ${pct(x.r.maxUtil)} max_util: ${fmtUsd(x.suppliedUsd - x.borrowedUsd)} of ${fmtUsd(x.suppliedUsd)} can be withdrawn`;
+    })
+    .join("; ");
+}
+
+/**
  * Why lenders have no first-loss capital in front of them (HR9), or null: the
  * pool has material borrows and its effective backstop (after the queue)
  * covers less than THRESHOLDS.minFirstLossCoverage of them.
@@ -578,6 +598,12 @@ export function ratePool(s: PoolSnapshot, opts: RateOptions = {}): PoolRating {
     eligible = false;
     score = Math.min(score, HARD_CAPS.unverifiableCollateralSource);
     hardRules.push(`HR5 collateral price source unidentifiable (${opaque.map((x) => x.r.symbol).join(", ")}) ⇒ not eligible, grade ≤ C`);
+  }
+  const locked = lendersLockedIn(d);
+  if (locked) {
+    eligible = false;
+    score = Math.min(score, HARD_CAPS.lendersLockedIn);
+    hardRules.push(`HR10 ${locked} ⇒ not eligible, grade ≤ C`);
   }
   // HR6 / HR7 share one soft ceiling, applied once even when both hold. HR9
   // is the stricter one (at most C) and says what HR7 would about the backstop.

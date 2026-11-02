@@ -112,6 +112,13 @@ const RULES: Array<{ code: string; text: (rule: string) => string }> = [
   { code: "HR2", text: () => "A price is missing or stale, on collateral or on a borrowed asset" },
   { code: "HR5", text: () => "A collateral price source could not be identified" },
   {
+    code: "HR10",
+    text: (rule) => {
+      const m = rule.match(/HR10 (\S+) is ([\d.]+%) borrowed/);
+      return `Lenders are locked in: ${m ? `${m[1]} is ${m[2]} borrowed, ` : "a reserve is "}at or past its borrowing limit, so only what is not lent out can be withdrawn`;
+    },
+  },
+  {
     code: "HR1",
     text: (rule) =>
       Number(rule.match(/status (\d)/)?.[1]) === 6
@@ -144,7 +151,7 @@ function mainReason(r: Rating): string {
     ? r.hardRules
     : r.reasons.filter((x) => /HR\d/.test(x)).map((x) => x.replace(/^underlying: /, ""));
   for (const { code, text } of RULES) {
-    const hit = rules.find((x) => x.startsWith(code) || x.includes(`${code} `));
+    const hit = rules.find((x) => x.startsWith(`${code} `) || x.includes(` ${code} `));
     if (hit) return viaPool(text(hit));
   }
   // No rule fired: lead with the weakest factor, named as on the factor list.

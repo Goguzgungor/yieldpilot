@@ -14,6 +14,7 @@
 import {
   assessSdexCollateral,
   derive,
+  lendersLockedIn,
   priceProblem,
   ratePool,
   sourceQuality,
@@ -148,6 +149,8 @@ function combos<T>(items: T[], k: number): T[][] {
 function blockerFor(s: PoolSnapshot, best: { score: number }, target: "A" | "B"): string {
   const missing = s.reserves.filter((r) => r.enabled && priceProblem(r, s.asOf.timestamp) === "missing").map((r) => r.symbol);
   if (missing.length) return `No price at all for ${missing.join(", ")}: the oracle has to publish one before this pool can be rated higher.`;
+  const locked = lendersLockedIn(derive(s));
+  if (locked) return `${locked}. Until borrowers repay or lenders add supply, the pool stays at most C and closed to deposits.`;
   return `Even with every change above the engine would give ${best.score}; market conditions (utilization, collateral mix) keep it under ${TARGET_MIN[target]}.`;
 }
 
