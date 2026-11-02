@@ -29,7 +29,7 @@ user's Freighter G-account ── owns ──► OZ smart account (Default rule:
                                                          vigil-guard → transfer only to the pool
 ```
 
-The user signs every owner action in Freighter: deploying the wallet and adding or removing the agent's rules. For wallets created since 2026-11-01 the backend holds no owner key. The seven wallets created before that were backend-owned and unguarded; `scripts/migrate-legacy-accounts.ts` adds the guard and makes the user co-owner, and the backend key leaves only when the user finalizes ownership in the app.
+The user signs every owner action in Freighter: deploying the wallet and adding or removing the agent's rules. For wallets created since 2026-11-01 the backend holds no owner key. The seven wallets created before that were backend-owned and unguarded. On 2026-11-02 each got the guard on both agent rules and its user as co-owner ([21 transactions](docs/legacy-migration-2026-11-02.md)), so the backend can no longer change them alone; its key leaves a wallet when the user finalizes ownership in the app.
 
 The agent applies the same rating check before it chooses (`src/lib/vigilGate.ts`): a pool without a fresh Vigil rating that is eligible and at or above the wallets' minimum (60) is not a candidate. When no pool passes, the agent holds and idle USDC stays idle.
 
@@ -40,7 +40,7 @@ The agent applies the same rating check before it chooses (`src/lib/vigilGate.ts
 | A G-account (Freighter) can own the deployed OZ smart account | `scripts/spike-delegated-owner.ts` |
 | User-owned onboarding works end-to-end through the API routes | `scripts/verify-onboarding-owner.ts` |
 | Without the guard, the agent key can withdraw a user's Blend position to another address; with the guard, that call and every other escape route are rejected | `scripts/verify-guard.ts`, results in `contracts/README.md` |
-| Legacy (backend-owned) wallets can be guarded and handed to their users | `scripts/migrate-legacy-accounts.ts`, `/api/onboard/prepare` step `finalize-ownership` |
+| Legacy (backend-owned) wallets can be guarded and handed to their users | `scripts/migrate-legacy-accounts.ts` + `src/lib/legacyMigration.ts` (run on all seven: [`docs/legacy-migration-2026-11-02.md`](docs/legacy-migration-2026-11-02.md)), `/api/onboard/prepare` step `finalize-ownership` |
 | Mainnet ratings can be published to the registry and read back on-chain | `scripts/vigil-publish.ts`, run every 30 minutes by `.github/workflows/vigil-publish.yml` (each run's input is kept as an artifact) |
 
 Live ratings for every Blend pool (the V2 and v2.1 deployments) are served at `/ratings` (page) and `/api/ratings` (JSON, served from a cache recomputed hourly). The engine also reconstructs the YieldBlox pool as configured before the 22 Feb 2026 exploit and grades it E (`npx tsx scripts/vigil-backtest.ts`).
