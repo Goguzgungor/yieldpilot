@@ -24,7 +24,7 @@
  * its score, or 0 when Vigil marks that pool not eligible. Nothing is published
  * for it when the pool is NR or there is no position, so the gate refuses.
  *
- * Runs hourly from .github/workflows/vigil-publish.yml.
+ * Runs every 30 minutes from .github/workflows/vigil-publish.yml.
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { Keypair, TransactionBuilder, rpc, type Transaction } from "@stellar/stellar-sdk";

@@ -41,9 +41,9 @@ The agent applies the same rating check before it chooses (`src/lib/vigilGate.ts
 | User-owned onboarding works end-to-end through the API routes | `scripts/verify-onboarding-owner.ts` |
 | Without the guard, the agent key can withdraw a user's Blend position to another address; with the guard, that call and every other escape route are rejected | `scripts/verify-guard.ts`, results in `contracts/README.md` |
 | Legacy (backend-owned) wallets can be guarded and handed to their users | `scripts/migrate-legacy-accounts.ts`, `/api/onboard/prepare` step `finalize-ownership` |
-| Mainnet ratings can be published to the registry and read back on-chain | `scripts/vigil-publish.ts`, run hourly by `.github/workflows/vigil-publish.yml` (each run's input is kept as an artifact) |
+| Mainnet ratings can be published to the registry and read back on-chain | `scripts/vigil-publish.ts`, run every 30 minutes by `.github/workflows/vigil-publish.yml` (each run's input is kept as an artifact) |
 
-Live ratings for every Blend pool (the V2 and v2.1 deployments) are served at `/ratings` (page) and `/api/ratings` (JSON, cached hourly). The engine also reconstructs the YieldBlox pool as configured before the 22 Feb 2026 exploit and grades it E (`npx tsx scripts/vigil-backtest.ts`).
+Live ratings for every Blend pool (the V2 and v2.1 deployments) are served at `/ratings` (page) and `/api/ratings` (JSON, served from a cache recomputed hourly). The engine also reconstructs the YieldBlox pool as configured before the 22 Feb 2026 exploit and grades it E (`npx tsx scripts/vigil-backtest.ts`).
 
 ## Testnet contracts
 
@@ -52,7 +52,7 @@ Live ratings for every Blend pool (the V2 and v2.1 deployments) are served at `/
 | Exec Blend V2 pool | `CBI7WAUQ4NPQFZW4C3MDSVFAZJWV3RCLZSTTMA5OZ6BTPEQMOZZNSZ3Z` |
 | Exec USDC (SAC) | `CD2R7WREEPGIAXZL4ASB76Y6PWTY6ZZXZ6C64AIKFDIG36YKQPNY6B2I` |
 | vigil-guard (RiskGate) | `CD6BDS7R5K3IUCQSJUZUWAGLTR47EZOYEVCO5MPT7YGNBNQRHSNY5VMS` |
-| vigil-registry | `CB4LXLCCD7YDND5FBVXPKPHUQMF7JFSDRVXHG7ZZTWWNPJ6WDCXDNDF6` (1 publisher, `GAIY6WF2…JJFD`, hourly; admin `GANUB45L…QH3C`) |
+| vigil-registry | `CB4LXLCCD7YDND5FBVXPKPHUQMF7JFSDRVXHG7ZZTWWNPJ6WDCXDNDF6` (1 publisher, `GAIY6WF2…JJFD`, every 30 min; admin `GANUB45L…QH3C`) |
 | OZ ed25519 verifier | `CBHJOANTAHF2ZKU5HZRZTWP4GX7YCSNR3V3AIMAH5P5R7S465SK24RSO` |
 | OZ spending-limit policy | `CBLNG63CIFKLFY6ZTL32NWMGPN7NBDSXZUSCQNTLMYRTLIZYA7MG3KAP` |
 | OZ smart-account wasm | `e2f4ed54b009c6b1c5bd848e4c73ff706c74d9436757859423f8959fa4aca28d` |

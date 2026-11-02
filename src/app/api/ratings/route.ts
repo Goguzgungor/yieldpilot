@@ -1,13 +1,14 @@
-import { NextResponse } from "next/server";
-import { getRatings } from "../../../lib/runtime";
+import { after, NextResponse } from "next/server";
+import { getRatings, refreshExpiredRatings } from "../../../lib/runtime";
 
 export const dynamic = "force-dynamic";
-// A cache miss runs the full mainnet read (~90 s).
+// An empty cache, a refresh or the background recompute runs the full mainnet read (~90 s).
 export const maxDuration = 300;
 
 /**
  * GET /api/ratings — Vigil risk ratings for every Blend pool (V2 and v2.1) and configured
- * DeFindex strategy (mainnet, read-only), cached for an hour.
+ * DeFindex strategy (mainnet, read-only), served from the cache. A copy older than
+ * an hour is still served at once and recomputed after the response.
  *
  *   ?refresh=1  recompute now (only if the cache is older than 5 minutes)
  *   ?inputs=1   include the per-pool inputs behind each rating (for audit /
@@ -24,6 +25,8 @@ export async function GET(req: Request) {
     let result = await getRatings();
     if (url.searchParams.get("refresh") === "1" && Date.now() - result.cachedAt > 5 * 60 * 1000) {
       result = await getRatings({ refresh: true });
+    } else if (result.expired) {
+      after(refreshExpiredRatings);
     }
     const { inputs, ...rest } = result.data;
     return NextResponse.json({

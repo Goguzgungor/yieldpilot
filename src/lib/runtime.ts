@@ -687,8 +687,10 @@ async function cachedVigilVerdicts(rt: Runtime, maxAgeSec: number): Promise<Vigi
   }
 }
 
-/** Ratings older than this are recomputed on the next read. */
+/** Ratings older than this are recomputed in the background on the next read. */
 const RATINGS_TTL_MS = 60 * 60 * 1000;
+/** A background recompute started this recently (on any instance) is left to finish. */
+const RATINGS_REFRESH_LEASE_MS = 5 * 60 * 1000;
 let ratingsInFlight: Promise<RatingsJson> | null = null;
 
 export interface CachedRatings {
@@ -696,13 +698,16 @@ export interface CachedRatings {
   /** epoch ms when the ratings were computed and cached. */
   cachedAt: number;
   stale: boolean;
+  /** Older than {@link RATINGS_TTL_MS}: the caller should run {@link refreshExpiredRatings} after responding. */
+  expired: boolean;
 }
 
 /**
  * Vigil ratings for every Blend pool (V2 and v2.1) + configured DeFindex strategy, from a
  * live mainnet read. A full run takes ~90 s, so the result lives in the DB KV
- * (shared across serverless instances) for {@link RATINGS_TTL_MS}; concurrent
- * misses in one instance share a single run. `refresh` forces a recompute.
+ * (shared across serverless instances) and any cached copy is returned at once,
+ * marked `expired` past {@link RATINGS_TTL_MS}; only an empty cache or `refresh`
+ * waits for a run. Concurrent runs in one instance share a single read.
  * If a recompute fails and an older copy exists, that copy is returned with
  * `stale: true` instead of an error.
  */
@@ -718,8 +723,8 @@ export async function getRatings(opts: { refresh?: boolean } = {}): Promise<Cach
       cached = null;
     }
   }
-  if (cached && !opts.refresh && Date.now() - cachedAt < RATINGS_TTL_MS) {
-    return { data: cached, cachedAt, stale: false };
+  if (cached && !opts.refresh) {
+    return { data: cached, cachedAt, stale: false, expired: Date.now() - cachedAt >= RATINGS_TTL_MS };
   }
 
   ratingsInFlight ??= computeLiveRatings({
@@ -746,9 +751,28 @@ export async function getRatings(opts: { refresh?: boolean } = {}): Promise<Cach
     const now = Date.now();
     await rt.db.setKV("vigilRatings", JSON.stringify(data));
     await rt.db.setKV("vigilRatingsAt", String(now));
-    return { data, cachedAt: now, stale: false };
+    return { data, cachedAt: now, stale: false, expired: false };
   } catch (e) {
-    if (cached) return { data: cached, cachedAt, stale: true };
+    if (cached) return { data: cached, cachedAt, stale: true, expired: Date.now() - cachedAt >= RATINGS_TTL_MS };
     throw e;
+  }
+}
+
+/**
+ * Recompute expired ratings, for a route to run after it has answered with the
+ * cached copy, so no visitor waits for the mainnet read. Skips when the cache
+ * was refreshed meanwhile or another instance started a run within
+ * {@link RATINGS_REFRESH_LEASE_MS}. Never throws.
+ */
+export async function refreshExpiredRatings(): Promise<void> {
+  try {
+    const rt = getRuntime();
+    const [atRaw, leaseRaw] = await Promise.all([rt.db.getKV("vigilRatingsAt"), rt.db.getKV("vigilRatingsRefreshAt")]);
+    const now = Date.now();
+    if (now - (Number(atRaw) || 0) < RATINGS_TTL_MS || now - (Number(leaseRaw) || 0) < RATINGS_REFRESH_LEASE_MS) return;
+    await rt.db.setKV("vigilRatingsRefreshAt", String(now));
+    await getRatings({ refresh: true });
+  } catch {
+    /* the next read retries */
   }
 }
