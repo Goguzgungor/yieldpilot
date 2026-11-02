@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { execPoolStandIn, nextBookIndex, nextRunIndex, packRun, registryInputs, RUN_ARCHIVE_DAYS, unpackRun, type PublishableRating } from "./publish";
+import { execPoolStandIn, nextBookIndex, nextRunIndex, packRun, registryInputs, registryScore, RUN_ARCHIVE_DAYS, unpackRun, type PublishableRating } from "./publish";
 
 const rating = (poolId: string, o: Partial<PublishableRating> = {}): PublishableRating => ({
   poolId,
@@ -32,6 +32,17 @@ describe("registry inputs", () => {
     const standIn = { pool: EXEC, score: 75, timestamp: 9n, reasonsHash: "cd".repeat(32) };
     const inputs = registryInputs([rating("A"), rating("NR", { score: null, grade: "NR" }), rating("B", { score: 51 })], 9, standIn);
     expect(inputs.map((i) => [i.pool, i.score, i.timestamp])).toEqual([["A", 75, 9n], ["B", 51, 9n], [EXEC, 75, 9n]]);
+  });
+
+  it("signs 0 for a pool Vigil marks not eligible, so no RiskGate minimum accepts it, and keeps its hash", () => {
+    const locked = rating("LOCKED", { score: 64, grade: "C", eligibleForDeposit: false, reasonsHash: "cd".repeat(32) });
+    expect(registryInputs([rating("A"), locked], 9, null).map((i) => [i.pool, i.score, i.reasonsHash])).toEqual([
+      ["A", 75, "ab".repeat(32)],
+      ["LOCKED", 0, "cd".repeat(32)],
+    ]);
+    expect(registryScore(locked)).toBe(0);
+    expect(registryScore(rating("A"))).toBe(75);
+    expect(registryScore(rating("NR", { score: null }))).toBeNull();
   });
 });
 

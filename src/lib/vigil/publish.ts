@@ -4,6 +4,12 @@
  * plus YieldPilot's testnet exec-pool stand-in. Shared by scripts/vigil-publish.ts
  * and /api/cron/publish.
  *
+ * The signed score is the engine's score when Vigil marks the pool eligible for
+ * deposits and 0 when it does not ({@link registryScore}): the registry has no
+ * eligibility field, and a pool held back by a hard rule (lenders locked in, a
+ * backstop about to freeze) can still score above a RiskGate minimum. The
+ * reasonsHash is the rating's either way, so the full score stays verifiable.
+ *
  * Testnet stand-in: YieldPilot executes every deposit into one testnet pool,
  * whatever mainnet pool it chose. That pool gets the rating of the mainnet pool
  * YieldPilot holds, so the RiskGate on the testnet wallets checks the rating the
@@ -38,6 +44,12 @@ export interface PublishOutcome {
   failures: string[];
 }
 
+/** What the registry gets for a rating: its score, 0 when not eligible, null for NR. */
+export function registryScore(r: Pick<PublishableRating, "score" | "eligibleForDeposit">): number | null {
+  if (r.score === null) return null;
+  return r.eligibleForDeposit ? r.score : 0;
+}
+
 /** The exec pool's stand-in rating (see header), or null with the reason. */
 export function execPoolStandIn(
   ratings: PublishableRating[],
@@ -50,18 +62,18 @@ export function execPoolStandIn(
     const why = heldPoolId ? `held pool ${heldPoolId.slice(0, 6)}… is ${r ? "NR" : "unrated"}` : "no position";
     return { input: null, note: `exec pool ${execPoolId.slice(0, 6)}…: no rating published (${why})` };
   }
-  const score = r.eligibleForDeposit ? r.score : 0;
+  const score = registryScore(r) ?? 0;
   return {
     input: { pool: execPoolId, score, timestamp, reasonsHash: r.reasonsHash },
     note: `exec pool ${execPoolId.slice(0, 6)}… stands in for ${r.name}: ${r.grade} ${r.score}${r.eligibleForDeposit ? "" : " (not eligible ⇒ 0)"}`,
   };
 }
 
-/** The registry inputs for one run: every rated pool, then the stand-in. */
+/** The registry inputs for one run: every rated pool at its {@link registryScore}, then the stand-in. */
 export function registryInputs(ratings: PublishableRating[], computedAt: number, standIn: RatingInput | null): RatingInput[] {
   const inputs: RatingInput[] = ratings
     .filter((r): r is PublishableRating & { score: number } => r.score !== null)
-    .map((r) => ({ pool: r.poolId, score: r.score, timestamp: BigInt(computedAt), reasonsHash: r.reasonsHash }));
+    .map((r) => ({ pool: r.poolId, score: registryScore(r)!, timestamp: BigInt(computedAt), reasonsHash: r.reasonsHash }));
   return standIn ? [...inputs, standIn] : inputs;
 }
 

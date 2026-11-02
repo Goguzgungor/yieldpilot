@@ -14,12 +14,14 @@
  *
  * The registry keeps each publisher's latest submission only, so the on-chain
  * check covers the run the registry holds now; older runs are on-chain in the
- * publish_batch transactions. Exit code 0 when everything checks out.
+ * publish_batch transactions. A pool Vigil marks not eligible is signed at 0
+ * (src/lib/vigil/publish.ts registryScore). Exit code 0 when everything checks out.
  */
 import { readFileSync } from "node:fs";
 import { rpc } from "@stellar/stellar-sdk";
 import { RegistryClient } from "../packages/vigil-sdk/src";
 import { verifyRun, type ArchivedRun } from "../src/lib/vigil/audit";
+import { registryScore } from "../src/lib/vigil/publish";
 
 const ARCHIVE = process.env.VIGIL_ARCHIVE_URL ?? "https://yieldpilot.org/api/ratings/runs";
 const REGISTRY = process.env.VIGIL_REGISTRY_ID ?? "CB4LXLCCD7YDND5FBVXPKPHUQMF7JFSDRVXHG7ZZTWWNPJ6WDCXDNDF6";
@@ -60,8 +62,9 @@ async function main() {
     const client = new RegistryClient(REGISTRY, new rpc.Server(RPC), PASS, READER);
     const publishers = await client.publishers();
     for (const r of check.results) {
-      const score = run.ratings.find((x) => x.poolId === r.poolId)?.score;
-      if (score === null || score === undefined) {
+      const rated = run.ratings.find((x) => x.poolId === r.poolId);
+      const score = rated ? registryScore(rated) : null;
+      if (score === null) {
         onchain.set(r.poolId, "not published (NR)");
         continue;
       }
@@ -73,7 +76,8 @@ async function main() {
         else {
           const match = sub.reasonsHash === r.reasonsHash && sub.score === score;
           ok &&= match;
-          seen.push(`${p.slice(0, 6)}… ${match ? "✓" : `✗ signed ${sub.score} ${sub.reasonsHash.slice(0, 12)}…`}`);
+          const note = rated && !rated.eligibleForDeposit ? " (not eligible ⇒ 0)" : "";
+          seen.push(`${p.slice(0, 6)}… ${match ? `✓${note}` : `✗ signed ${sub.score}, expected ${score}${note} ${sub.reasonsHash.slice(0, 12)}…`}`);
         }
       }
       onchain.set(r.poolId, seen.join(", "));
