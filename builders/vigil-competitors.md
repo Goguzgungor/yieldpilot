@@ -1,209 +1,209 @@
-# Vigil: rakip analizi
+# Vigil: competitor analysis
 
-> **Güncel tablo başvuruda:** `submission.md` → "How Vigil relates to existing work", 2026-11-02'de kaynaklarından yeniden kontrol edildi. Bu dosya 2026-11-01'deki araştırma ve bazı yerleri eskidi: Riskon artık YieldBlox'a C 58 veriyor, Sentora ve Upshift Stellar'da canlı, REAPP bir OpenZeppelin policy projesi değil, Tsuna'nın vault'ları kendi Soroban kontratları. Sonradan bulunanlar yalnızca başvuruda var: Stenion, Tsuna, Credora + Newton, Webacy'nin vault rating'leri, SCF #44 policy builder'ları (Policywright, Crediolabs.ai, Gateway.fm), OpenZeppelin Monitor ve Alterscope'un smart-wallet oturumları.
+> **The current table is in the application:** `submission.md` → "How Vigil relates to existing work", rechecked against its sources on 2026-11-02. This file is the research of 2026-11-01, and parts of it are out of date: Riskon now gives YieldBlox C 58, Sentora and Upshift are live on Stellar, REAPP is not an OpenZeppelin policy project, and Tsuna's vaults are their own Soroban contracts. Findings made later are only in the application: Stenion, Tsuna, Credora + Newton, Webacy's vault ratings, the SCF #44 policy builders (Policywright, Crediolabs.ai, Gateway.fm), OpenZeppelin Monitor and Alterscope's smart-wallet sessions.
 
-**Tarih:** 2026-11-01. Aşağıdaki tüm URL'lere bu tarihte erişildi.
-**Yöntem:**
-- SCF submission sayfaları, proje siteleri ve dokümanlar okundu.
-- GitHub commit geçmişlerine `gh api` ile bakıldı.
-- Halka açık API endpoint'leri `curl` ile sorgulandı.
-- Blend mainnet'i read-only okundu ve simüle edildi; tx gönderilmedi.
-- Stellar Ecosystem DB snapshot'ı kullanıldı (lumenloop/stellar-ecosystem-db, commit `efaa048`, 2026-10-30). Arama mekanizma kelimeleriyle yapıldı: risk, score, rating, monitor, alert, oracle, insur, audit, firewall, guard, health factor ve diğerleri. Toplam 172 eşleşme çıktı.
-- EVM oyuncuları (Credora, Chaos, Gauntlet, Exponential, DeFi Safety, LlamaRisk, Block Analitica, Sherlock/Cantina, Forta) için tek bir paralel araştırma turu yapıldı. Bu satırlar † ile işaretli. Ben yalnızca Hypernative tarihini ve Riskon'u kendim yeniden doğruladım.
+**Date:** 2026-11-01. All URLs below were accessed on this date.
+**Method:**
+- SCF submission pages, project sites and documentation were read.
+- GitHub commit histories were checked with `gh api`.
+- Public API endpoints were queried with `curl`.
+- Blend on mainnet was only read and simulated; no tx was sent.
+- A Stellar Ecosystem DB snapshot was used (lumenloop/stellar-ecosystem-db, commit `efaa048`, 2026-10-30). The search used mechanism keywords: risk, score, rating, monitor, alert, oracle, insur, audit, firewall, guard, health factor and others. It returned 172 matches in total.
+- For the EVM players (Credora, Chaos, Gauntlet, Exponential, DeFi Safety, LlamaRisk, Block Analitica, Sherlock/Cantina, Forta), a single parallel research round was run. These rows are marked with †. I re-verified only the Hypernative date and Riskon myself.
 
-> **SCF tutarları hakkında not.** SCF proje sayfasındaki "Total awarded" ile DB'deki `awarded_total` çoğu zaman farklı. Örnekler:
+> **Note on SCF amounts.** The "Total awarded" on the SCF project page and `awarded_total` in the DB often differ. Examples:
 > - Oracle Shield: $120K / $36K
 > - Orion: $122.2K / $73,333
 > - Hoops: $150K / $116,667
 >
-> DB değeri **ödenmiş tranche'lar** gibi görünüyor. Bu bir çıkarım, doğrulanmadı. Tabloda ikisi de "sayfa / DB" biçiminde verildi.
+> The DB value looks like **paid tranches**. This is an inference, not verified. The table gives both, as "page / DB".
 
 ---
 
-## 0. Önce bilmen gerekenler
+## 0. What you need to know first
 
-1. **Blend için havuz seviyesinde rating zaten var.** Kanıtlar:
-   - **Alterscope** (SCF #24 + #26, $137.6K) Stellar mainnet'te canlı. Blend lending havuzlarını kapsıyor ve agent'lara yönelik bir API ile MCP server sunuyor. Dokümanında "pre-deposit check" tarifi var: risk bandı kullanıcının toleransını aşarsa deposit reddediliyor.
-   - **Riskon** (SCF'siz, küçük bir proje), Fixed V2 ve YieldBlox V2 havuzlarına bugün A–F notu veren canlı bir API yayınlıyor.
-   - Bu yüzden taslaktaki **"No pool-level, on-chain-enforceable rating exists on Stellar"** cümlesinin ilk yarısı yanlış ve çıkarılmalı.
-2. **Bu aramada şunları bulamadım:**
-   - Rating'i Soroban'a yazan ve **kullanıcının smart account'unda** zorlayan bir sistem.
-   - DeFindex vault'larını puanlayan bir sistem.
+1. **Pool-level ratings for Blend already exist.** Evidence:
+   - **Alterscope** (SCF #24 + #26, $137.6K) is live on Stellar mainnet. It covers Blend lending pools and offers an API and an MCP server aimed at agents. Its documentation has a "pre-deposit check" recipe: if the risk band exceeds the user's tolerance, the deposit is refused.
+   - **Riskon** (no SCF funding, a small project) publishes a live API that today gives A–F grades to the Fixed V2 and YieldBlox V2 pools.
+   - So the first half of the draft's sentence **"No pool-level, on-chain-enforceable rating exists on Stellar"** is wrong and should be removed.
+2. **In this search I did not find:**
+   - A system that writes ratings to Soroban and enforces them **in the user's smart account**.
+   - A system that scores DeFindex vaults.
 
-   Bu bir arama sonucu, mutlak bir iddia değil. Başvuruda "first/only" olarak kullanılmamalı.
-3. **Alterscope'un public OpenAPI spec'inde** Stellar smart-wallet'larla çalışan "autonomous strategies" endpoint'leri var. Yapıları:
-   - `register_session` / `revoke_session` çağrıları ve `policyJson.assetCaps[...].max_per_tx` limiti.
-   - Blend'e supply yapan bir autopilot.
-   - Sermaye akışı `AUTONOMY_SHADOW_MODE_ENABLED` bayrağıyla kapalı.
+   This is a search result, not an absolute claim. It should not be used as "first/only" in the application.
+3. **Alterscope's public OpenAPI spec** has "autonomous strategies" endpoints that work with Stellar smart wallets. Their structure:
+   - `register_session` / `revoke_session` calls and a `policyJson.assetCaps[...].max_per_tx` limit.
+   - An autopilot that supplies to Blend.
+   - Capital flow is turned off by the `AUTONOMY_SHADOW_MODE_ENABLED` flag.
 
-   Bu yapı hem YieldPilot hem de Vigil'in tüketici hikâyesiyle örtüşüyor.
-4. **Blend'in kendi on-chain gate'i zaten var.** Pool status `Frozen` olunca deposit kapanıyor. Ancak bu gate tembel çalışıyor:
-   - YieldBlox V2 bugün `status 3` (On_Ice) durumunda ve backstop Q4W %97.75.
-   - `update_status()` simülasyonu `5` (Frozen) döndürdü. Yani biri çağırana kadar deposit'ler açık kalıyor.
-   - Riskon aynı havuza **"A"** veriyor.
+   This structure overlaps with both YieldPilot and Vigil's consumer story.
+4. **Blend already has its own on-chain gate.** When the pool status is `Frozen`, deposits are closed. But this gate is lazy:
+   - YieldBlox V2 is at `status 3` (On_Ice) today, and its backstop Q4W is 97.75%.
+   - A simulation of `update_status()` returned `5` (Frozen). So deposits stay open until someone calls it.
+   - Riskon gives the same pool an **"A"**.
 
 ---
 
-## 1. Tablo
+## 1. Table
 
-Kısaltmalar:
-- **Seviye:** P = pool/market/vault seviyesi, A = varlık veya varlık çifti, Pr = protokol, W = cüzdan, adres ya da işlem.
-- **Enforcement:** sonuç on-chain bir kararı bloke ediyor mu.
+Abbreviations:
+- **Level:** P = pool/market/vault level, A = asset or asset pair, Pr = protocol, W = wallet, address or transaction.
+- **Enforcement:** whether the result blocks an on-chain decision.
 
-### 1a. Stellar-native ve SCF DB'den çıkanlar
+### 1a. Stellar-native projects and those from the SCF DB
 
-| Proje | Seviye | Stellar kapsamı (Blend / DeFindex) | On-chain enforcement | Açık kaynak | Durum (kanıt tarihi) | SCF fonu (sayfa / DB) |
+| Project | Level | Stellar coverage (Blend / DeFindex) | On-chain enforcement | Open source | Status (evidence date) | SCF funding (page / DB) |
 |---|---|---|---|---|---|---|
-| **Alterscope** (Solity Network UG) | P (Blend "lending pool metrics", fırsat başına risk bandı 1–5 ve faktör skorları), A (oracle), Pr | **Canlı.** Blend connector: 24 fırsat, ~$170M TVL. Aquarius ve SDEX de var. **DeFindex yok.** | Rating için yok ("never holds assets, submits transactions"). Smart-wallet autopilot spec'te var ama shadow-mode'da. | **Hayır.** Kod public değil. Metodoloji dokümante, ağırlıklar "calibrated internally" diye gizli. | **Aktif.** `blend` connector `last_success` 2026-11-01T14:21Z. Yeni MD Eylül 2026'da geldi. Docs portalı 2026-05-02'de açıldı. | #24 $38.4K + #26 $99.2K = **$137.6K** / $137.6K |
-| **Riskon** (mericcintosun/riskon) | **P**: 2 Blend V2 havuzu, A–F, 4 faktör | **Canlı.** Fixed V2 = "B" (47), YieldBlox V2 = **"A"** (30). DeFindex yok. | Havuz rating'i için yok. Testnet kontratı yalnızca cüzdan risk tier'ı tutuyor (repo açıklamasına göre). | Kod public, **lisans dosyası yok** | Aktif. Son push 2026-10-12, pool-rating commit'leri 2026-07-15/16. API 2026-11-01'de yanıt verdi. | Bulunamadı ("SCF 2024 Q1" iddiası doğrulanamadı) |
-| **Hoops Finance** | P: AMM havuz analitiği, "risk-assessed vaults" (metodoloji yayınlanmamış) | Aqua, Comet, Soroswap ve Phoenix adapter'ları var. "Blend weighted pools and backstop" deliverable'ı #30 sayfasında "Ongoing". | Strateji kontratları (router/account) var, rating enforcement yok. | Contracts repo public, lisans belirtilmemiş | Yavaşlamış. Son commit 2026-02-11, son blog 2025-07-28. FlashPool ve Vaults hâlâ "TESTNET". | #29 $50K + #30 $100K = $150K / $116,667 |
-| **DD** (Webacy) | Stellar'da W ve token. EVM'de vault rating'leri (0–100, A+–F) var ama **Stellar'da yok**. | Stellar adres ve token riski **beta**. Soroban submission'da kapsam dışı: "Maybe in the future". | Yok ("are not smart contracts themselves") | Hayır | Aktif (vault docs ekran görüntüleri 2026-04). Stellar ürününün canlıya çıktığı doğrulanamadı. | #38 $150K / $150K |
-| **Stellar Oracle Shield** (Sun Zu Lab) | **A**: `(base, quote)` çifti için 0–100 skor → Healthy/Degraded/Unsafe | Testnet kontratı `CCMSDP…YE7P`. Blend ve DeFindex adıyla geçmiyor. | **Evet, kısmen.** Protokoller `get_status` sorguluyor, kararı entegre eden protokol veriyor. Tek operator rolü var; 2-of-3 quorum ise plan aşamasında. | **Apache-2.0** | Aktif. v0.1.3 2026-08-26'da çıktı, son commit 2026-09-11. Mainnet README'de yok, oysa T3 tarihi 2026-09-11'di. | #43 $120K / $36K |
-| **Orion** (lightgatehq) | **W**: pozisyon, health factor, backstop Q4W maruziyeti | Mainnet'te canlı: Blend, Aquarius, Soroswap (FxDAO sayfada geçiyor). DeFindex yok. | Yok, read-only API | Adapter'lar Apache-2.0 (`lidapters`) | Aktif. Changelog 2026-09-24, repo 2026-10-20. Ücretsiz, 60 rpm. | #41 $122.2K / $73,333 |
-| **DeRisk** (Carmine) | Kredi ve protokol seviyesinde erken uyarı | Stellar tarafı yalnızca bir Futurenet event scraper | Yok | Repo public | **Dormant.** `derisk-stellar-events` son commit 2023-11-30. Site 2026-11-01'de timeout verdi. | #20 $50K / $50K |
-| **Latch** (3000-Labs) | Risk ürünü değil. C-address onboarding ve OZ smart account cüzdanı (policy'li). | OZ smart account altyapısı. RiskGate'i barındırabilecek bir cüzdan. | Policy altyapısı var, risk verisi yok | Repo public, lisans görünmedi | Son commit 2026-05-15 | #41 $120K / $72K |
-| **Hypernative** | W/kontrat: kullanıcının kurduğu izleme. Rating değil. | **Evet.** SDF tutorial'ı (2026-07-16), Blend havuzunda `get_reserve()` okuyup utilization alarmı kuruyor. | Alarm aksiyonları arasında "contract invocations to run onchain events" var. Stellar'da otomatik pause doğrulanamadı. | Hayır | Aktif (2026-07-16) | #26 $50K (Activation) |
-| **Blockaid** | W/işlem/token/dApp | Freighter ve Lobstr işlem taraması. YieldBlox sonrası forensik yaptı (2026-05-20). | Cüzdan UI'ında uyarı veya blok, kontrat seviyesinde değil | Hayır | Aktif (2026-05-20) | SCF ödülü bulunamadı (SDF "partnership") |
-| **Bluechip** | **A**: stablecoin harf notları (SMIDGE) | Stellar cüzdan rating aracı. USDC "B+", CETES "B+". | Yok. Sayfada on-chain yayın geçmiyor. | Metodoloji public, kod belirtilmemiş | #44 ödüllü. Ayrıca aktivite kontrol edilmedi. | #44 $136.5K / $136.5K |
-| **Dig** | Token risk bayrakları, alarmlar, protokol metrikleri | Blend, Aquarius, Soroswap ve DeFindex analitiği | Yok | MIT (`dig-stellar`) | Aktif (push 2026-10-30) | #43 $75K / $75K |
-| **Tezoro** | Kendi içinde market skorlaması. "Security Layer" Ethereum'da canlı, Stellar'da değil. | Blend v2 adapter'lı vault | Belirtilmemiş | Stellar repo public, lisans yok | Stellar repo'da son push 2026-04-23. tezoro.io artık "Warren" markasını gösteriyor. | #42 $143.8K / $143.8K |
-| **Policywright** / **Gateway.fm OZ Accounts Policy Builder** | Statik least-privilege OZ policy üretimi | OZ smart account | Policy evet, **risk verisi yok** | Policywright repo public | #44 | Policywright: DB $33K (sayfada $55K, alt ajanın bulgusu, doğrulamadım). Gateway.fm: $98K. |
-| **CertiK** #25, **CyVers** #26, **Merkle Science** #41, **Scorechain** #36, **Range** | W/adres/işlem, KYT/AML | Stellar adres ve işlem tarafı | Yok | Hayır | Stellar ürünlerinin çıktığı doğrulanamadı | #25 $50K, #26 ~$50K, #41 DB $82.8K, #36 $85K, Range #34 doğrulanamadı |
+| **Alterscope** (Solity Network UG) | P (Blend "lending pool metrics", a 1–5 risk band and factor scores per opportunity), A (oracle), Pr | **Live.** Blend connector: 24 opportunities, ~$170M TVL. Aquarius and SDEX too. **No DeFindex.** | None for ratings ("never holds assets, submits transactions"). A smart-wallet autopilot is in the spec, but in shadow mode. | **No.** Code is not public. The methodology is documented; the weights are hidden as "calibrated internally". | **Active.** `blend` connector `last_success` 2026-11-01T14:21Z. A new MD joined in September 2026. The docs portal opened on 2026-05-02. | #24 $38.4K + #26 $99.2K = **$137.6K** / $137.6K |
+| **Riskon** (mericcintosun/riskon) | **P**: 2 Blend V2 pools, A–F, 4 factors | **Live.** Fixed V2 = "B" (47), YieldBlox V2 = **"A"** (30). No DeFindex. | None for pool ratings. The testnet contract only holds a wallet risk tier (per the repo description). | Code public, **no license file** | Active. Last push 2026-10-12, pool-rating commits 2026-07-15/16. The API responded on 2026-11-01. | Not found (the "SCF 2024 Q1" claim could not be verified) |
+| **Hoops Finance** | P: AMM pool analytics, "risk-assessed vaults" (methodology not published) | Adapters for Aqua, Comet, Soroswap and Phoenix. The "Blend weighted pools and backstop" deliverable is "Ongoing" on the #30 page. | Strategy contracts (router/account) exist; no rating enforcement. | Contracts repo public, license not stated | Slowed down. Last commit 2026-02-11, last blog post 2025-07-28. FlashPool and Vaults still "TESTNET". | #29 $50K + #30 $100K = $150K / $116,667 |
+| **DD** (Webacy) | W and token on Stellar. Vault ratings (0–100, A+–F) on EVM, but **not on Stellar**. | Stellar address and token risk in **beta**. Soroban is out of scope in the submission: "Maybe in the future". | None ("are not smart contracts themselves") | No | Active (vault docs screenshots 2026-04). Could not verify that the Stellar product went live. | #38 $150K / $150K |
+| **Stellar Oracle Shield** (Sun Zu Lab) | **A**: a 0–100 score per `(base, quote)` pair → Healthy/Degraded/Unsafe | Testnet contract `CCMSDP…YE7P`. Blend and DeFindex are not mentioned by name. | **Yes, partly.** Protocols query `get_status`; the integrating protocol makes the decision. There is a single operator role; a 2-of-3 quorum is at the planning stage. | **Apache-2.0** | Active. v0.1.3 released 2026-08-26, last commit 2026-09-11. Mainnet is not in the README, although the T3 date was 2026-09-11. | #43 $120K / $36K |
+| **Orion** (lightgatehq) | **W**: position, health factor, backstop Q4W exposure | Live on mainnet: Blend, Aquarius, Soroswap (FxDAO is mentioned on the page). No DeFindex. | None, read-only API | Adapters Apache-2.0 (`lidapters`) | Active. Changelog 2026-09-24, repo 2026-10-20. Free, 60 rpm. | #41 $122.2K / $73,333 |
+| **DeRisk** (Carmine) | Early warning at credit and protocol level | The Stellar side is only a Futurenet event scraper | None | Repo public | **Dormant.** `derisk-stellar-events` last commit 2023-11-30. The site timed out on 2026-11-01. | #20 $50K / $50K |
+| **Latch** (3000-Labs) | Not a risk product. C-address onboarding and an OZ smart account wallet (with policies). | OZ smart account infrastructure. A wallet that could host RiskGate. | Policy infrastructure, no risk data | Repo public, no license seen | Last commit 2026-05-15 | #41 $120K / $72K |
+| **Hypernative** | W/contract: monitoring the user sets up. Not a rating. | **Yes.** An SDF tutorial (2026-07-16) reads `get_reserve()` on a Blend pool and sets up a utilization alert. | Alert actions include "contract invocations to run onchain events". Automatic pause on Stellar could not be verified. | No | Active (2026-07-16) | #26 $50K (Activation) |
+| **Blockaid** | W/transaction/token/dApp | Transaction scanning in Freighter and Lobstr. Did forensics after YieldBlox (2026-05-20). | Warning or block in the wallet UI, not at contract level | No | Active (2026-05-20) | No SCF award found (SDF "partnership") |
+| **Bluechip** | **A**: stablecoin letter grades (SMIDGE) | A Stellar wallet rating tool. USDC "B+", CETES "B+". | None. The page does not mention on-chain publishing. | Methodology public, code not stated | Awarded in #44. Activity not checked separately. | #44 $136.5K / $136.5K |
+| **Dig** | Token risk flags, alerts, protocol metrics | Blend, Aquarius, Soroswap and DeFindex analytics | None | MIT (`dig-stellar`) | Active (push 2026-10-30) | #43 $75K / $75K |
+| **Tezoro** | Internal market scoring. "Security Layer" is live on Ethereum, not on Stellar. | A vault with a Blend v2 adapter | Not stated | Stellar repo public, no license | Last push to the Stellar repo 2026-04-23. tezoro.io now shows the "Warren" brand. | #42 $143.8K / $143.8K |
+| **Policywright** / **Gateway.fm OZ Accounts Policy Builder** | Static least-privilege OZ policy generation | OZ smart account | Policy yes, **no risk data** | Policywright repo public | #44 | Policywright: DB $33K ($55K on the page, a sub-agent's finding, I did not verify it). Gateway.fm: $98K. |
+| **CertiK** #25, **CyVers** #26, **Merkle Science** #41, **Scorechain** #36, **Range** | W/address/transaction, KYT/AML | Stellar address and transaction side | None | No | Could not verify that their Stellar products shipped | #25 $50K, #26 ~$50K, #41 DB $82.8K, #36 $85K, Range #34 not verified |
 
-### 1b. Genel ve EVM oyuncuları (†: tek araştırma turu, yeniden doğrulanmadı)
+### 1b. General and EVM players (†: single research round, not re-verified)
 
-| Proje | Seviye | Stellar kapsamı | On-chain enforcement | Açık kaynak | Durum | SCF |
+| Project | Level | Stellar coverage | On-chain enforcement | Open source | Status | SCF |
 |---|---|---|---|---|---|---|
-| **Credora** (artık "Credora by RedStone") † | P/vault (Morpho market'ları vault rating'ine topluyor), A | **Yok.** RedStone price feed'leri 2026-03-04'ten beri Stellar'da; "Blend… preparing to integrate RedStone feeds". Credora rating'i Stellar'da yok. Credora–Euler entegrasyonu bulunamadı. | Morpho'da yalnızca UI'da (curator onayıyla). On-chain risk feed bulunamadı. | Metodoloji public, kod değil | Aktif (2026-03) | Yok |
-| **Chaos Labs** (Edge Risk Oracles) † | Market ve parametre seviyesi | Yok | **Evet**: Aave'de parametreleri on-chain push ediyor | Hayır | 2026-04-06'da Aave'den ayrıldı | Yok |
-| **Gauntlet** † | Market parametreleri, curated vault | Yok | Governance ve curator rolü üzerinden | Hayır | Aktif (~2026-04) | Yok |
-| **Exponential.fi** † | **P** (A–F) | Blend için not yok. DefiLlama Blend sayfasında grade görünmüyor. | Yok | Hayır | exponential.fi → yo.xyz/risk'e yönleniyor (308). Retail ürün 2025-09-20'de kapandı. | Yok |
-| **DeFi Safety** † | Pr (process quality) | Yok | Yok | Kriterler public | Danışmanlığa döndü | Yok |
-| **LlamaRisk** † | A/market | Yok | Governance üzerinden | Raporlar public | Aktif (2026-07) | Yok |
-| **Block Analitica** † | Market/vault | Yok | Curator rolü üzerinden | Hayır | 2026 aktivitesi doğrulanamadı | Yok |
-| **Sherlock / Spearbit-Cantina** † | Audit; izleme ürünü yok | Cantina Audit Bank'te onaylı; Aquarius Soroban yarışmasını yürüttü. Soroban izleme ürünü yok. | — | — | — | Audit Bank (ödül değil) |
-| **Forta Firewall** † | İşlem | Yok (EVM rollup'ları) | Sequencer seviyesinde | Kısmen | 2025 | Yok |
+| **Credora** (now "Credora by RedStone") † | P/vault (aggregates Morpho markets into vault ratings), A | **None.** RedStone price feeds have been on Stellar since 2026-03-04; "Blend… preparing to integrate RedStone feeds". Credora ratings are not on Stellar. No Credora–Euler integration found. | On Morpho, only in the UI (with curator approval). No on-chain risk feed found. | Methodology public, code not | Active (2026-03) | None |
+| **Chaos Labs** (Edge Risk Oracles) † | Market and parameter level | None | **Yes**: pushes parameters on-chain on Aave | No | Left Aave on 2026-04-06 | None |
+| **Gauntlet** † | Market parameters, curated vaults | None | Through governance and the curator role | No | Active (~2026-04) | None |
+| **Exponential.fi** † | **P** (A–F) | No grade for Blend. No grade shows on the DefiLlama Blend page. | None | No | exponential.fi redirects to yo.xyz/risk (308). The retail product closed on 2025-09-20. | None |
+| **DeFi Safety** † | Pr (process quality) | None | None | Criteria public | Turned to consulting | None |
+| **LlamaRisk** † | A/market | None | Through governance | Reports public | Active (2026-07) | None |
+| **Block Analitica** † | Market/vault | None | Through the curator role | No | 2026 activity could not be verified | None |
+| **Sherlock / Spearbit-Cantina** † | Audit; no monitoring product | Cantina is approved in the Audit Bank; it ran the Aquarius Soroban contest. No Soroban monitoring product. | — | — | — | Audit Bank (not an award) |
+| **Forta Firewall** † | Transaction | None (EVM rollups) | At sequencer level | Partly | 2025 | None |
 
-### 1c. Blend ve DeFindex'in kendi araçları
+### 1c. Blend's and DeFindex's own tools
 
-| Kaynak | Ne yapıyor | Rating / verified list? |
+| Source | What it does | Rating / verified list? |
 |---|---|---|
-| Blend pool status (on-chain) | **Pool seviyesi, on-chain.** `update_status()` herkese açık. Q4W ve `met_threshold`'a göre status 3 (On_Ice: borrow kapalı) ya da 5 (Frozen: borrow ve **deposit** kapalı) atıyor. | Yalnızca ikili durum, skor yok. **Tembel çalışıyor:** YieldBlox V2'de Q4W %97.75 iken status hâlâ 3. Simülasyon `5` döndürüyor. |
-| blend-ui (Script3) | Status banner'ları (On Ice, Frozen, oracle error). `.env.production`'da **tek bir** `NEXT_PUBLIC_BLOCKED_POOLS` (`CBVOPI6…AKO7`). Varsayılan havuz listesi `MAINNET_V2_REWARD_ZONE` (4 havuz). Kullanıcı kendi "tracked pools" listesini tutuyor. | Numerik risk skoru ya da "verified pools" listesi yok. Yalnızca blok listesi ve reward-zone varsayılanı var. |
-| Blend docs "Choosing Pools" | Kullanıcıya bir kontrol listesi veriyor: backstop büyüklüğü, Q4W, collateral kalitesi, risk parametreleri, oracle güvenilirliği, admin güveni. | Değerlendirme kullanıcıya bırakılmış. **Vigil'in otomatikleştirdiği liste bu.** |
-| DeFindex (defindex-io / PaltaLabs) | Whitelist'li stratejiler. Manager ve Emergency Manager stratejiyi `pause` / `rescue` edebiliyor ("in collaboration with chain analysis tools"). Withdraw her zaman açık. defindex.io/strategies sayfasında Strategy, Type, Asset, TVL ve APY sütunları var. | **Risk skoru yok.** Pause ve rescue tetikleyicisi olarak Vigil'in doğal tüketicisi. Hiçbir LOI yok. |
+| Blend pool status (on-chain) | **Pool level, on-chain.** `update_status()` is open to anyone. Based on Q4W and `met_threshold` it sets status 3 (On_Ice: borrowing closed) or 5 (Frozen: borrowing and **deposits** closed). | Only a binary state, no score. **It is lazy:** on YieldBlox V2, with Q4W at 97.75%, the status is still 3. The simulation returns `5`. |
+| blend-ui (Script3) | Status banners (On Ice, Frozen, oracle error). `.env.production` has **a single** `NEXT_PUBLIC_BLOCKED_POOLS` entry (`CBVOPI6…AKO7`). The default pool list is `MAINNET_V2_REWARD_ZONE` (4 pools). The user keeps their own "tracked pools" list. | No numeric risk score or "verified pools" list. Only a blocklist and the reward-zone default. |
+| Blend docs "Choosing Pools" | Gives the user a checklist: backstop size, Q4W, collateral quality, risk parameters, oracle reliability, admin trust. | The assessment is left to the user. **This is the list Vigil automates.** |
+| DeFindex (defindex-io / PaltaLabs) | Whitelisted strategies. The Manager and Emergency Manager can `pause` / `rescue` a strategy ("in collaboration with chain analysis tools"). Withdrawals are always open. The defindex.io/strategies page has Strategy, Type, Asset, TVL and APY columns. | **No risk score.** A natural consumer of Vigil, as a pause and rescue trigger. No LOI of any kind. |
 
 ---
 
-## 2. En yakın 5 rakip
+## 2. The 5 closest competitors
 
-### 1) Alterscope — en büyük tehdit
-- **Örtüşme:**
-  - SCF tarafından iki kez fonlanmış, Stellar'da Blend'i bugün canlı kapsayan bir risk-veri platformu.
-  - Hedef kitlesinde açıkça "automated strategies and agents" var. MCP server, webhook ve REST sunuyor.
-  - Dokümanındaki "Score a vault before depositing" tarifi, risk bandı toleransı aşınca deposit'i reddeden bir agent kodu. Bu, Vigil'in off-chain yarısının aynısı.
-  - Spec'teki Stellar autonomous-strategy endpoint'leri (smart-wallet session, `max_per_tx` cap, Blend autopilot, `STALE_ORACLE` ile fail-closed) YieldPilot'un modeline çok yakın.
-- **Dürüst fark:**
-  - **Kapalı kaynak ve ücretli** (Free, Analyst, Team, Enterprise). Rating'ler on-chain yayınlanmıyor; enforcement yok, karar "your strategy decides".
-  - Blend derinliği docs'ta "Lending pool metrics" olarak geçiyor. En derin katman Morpho; oracle sınıflandırması şimdilik "Morpho-style Chainlink adapters" ile sınırlı.
-  - `GET /v2/pool/CCCCIQ…/risk-scores` (YieldBlox V2) `no_risk_score_coverage` döndü. Not: ID formatı farklı olabilir.
-  - DeFindex kapsanmıyor.
-  - Bugün gözlenen veri kalitesi sorunları: yield cache ~13 saat bayat (`cache_age 46702`), Aquarius ortalama APY'si %11,626 gibi saçma bir değer, `data-manifest` hata veriyor.
-- **Başvuru için:** Bu fark "biz olmayanı yapıyoruz" diye değil, "**açık ve on-chain olanı** yapıyoruz" diye anlatılmalı.
+### 1) Alterscope — the biggest threat
+- **Overlap:**
+  - A risk-data platform, funded twice by SCF, that covers Blend on Stellar live today.
+  - Its target audience explicitly includes "automated strategies and agents". It offers an MCP server, webhooks and REST.
+  - The "Score a vault before depositing" recipe in its documentation is agent code that refuses the deposit when the risk band exceeds the tolerance. This is the same as Vigil's off-chain half.
+  - The Stellar autonomous-strategy endpoints in the spec (smart-wallet session, `max_per_tx` cap, Blend autopilot, fail-closed on `STALE_ORACLE`) are very close to YieldPilot's model.
+- **Honest difference:**
+  - **Closed source and paid** (Free, Analyst, Team, Enterprise). Ratings are not published on-chain; there is no enforcement, and the decision is "your strategy decides".
+  - The depth of its Blend coverage appears in the docs as "Lending pool metrics". The deepest layer is Morpho; oracle classification is limited to "Morpho-style Chainlink adapters" for now.
+  - `GET /v2/pool/CCCCIQ…/risk-scores` (YieldBlox V2) returned `no_risk_score_coverage`. Note: the ID format may be different.
+  - DeFindex is not covered.
+  - Data quality problems observed today: the yield cache is ~13 hours stale (`cache_age 46702`), the Aquarius average APY is an absurd value of 11,626%, and `data-manifest` returns an error.
+- **For the application:** This difference should be presented not as "we are building what does not exist" but as "we are building **the open, on-chain one**".
 
-### 2) Riskon — Blend'de havuz seviyesi rating'i zaten yayınlıyor
-- **Örtüşme:** Blend V2 havuzlarına A–F notu veren ve JSON API sunan canlı bir site. "Pool-level rating for Blend exists" itirazının somut kanıtı bu.
-- **Dürüst fark:**
-  - Yalnızca 2 havuz ve 4 faktör: utilization 35%, collateral factor 25%, HHI 25%, depth 15%.
-  - Oracle kaynağı, backstop ve Q4W, pool status ya da collateral piyasa derinliği **yok**.
-  - Bunun sonucu: on-chain status'u On_Ice olan, Q4W'si %97.75 olan ve `update_status()` simülasyonu Frozen döndüren YieldBlox V2'ye **"A"** veriyor, Fixed V2'ye "B".
-  - Lisans yok, 4 yıldız, SCF fonu yok, on-chain yayın yok.
-- **Başvuru için:**
-  - Zayıflatan bir rakip değil, ama "ilk" iddiasını öldürüyor.
-  - "Utilization/TVL tabanlı skorlar donmuş havuzu güvenli gösteriyor" argümanının kamusal bir örneği. Bizim YieldPilot `/api/scan` örneğimizle aynı hata.
+### 2) Riskon — already publishes pool-level ratings on Blend
+- **Overlap:** A live site that gives Blend V2 pools A–F grades and serves a JSON API. This is the concrete evidence for the objection "Pool-level rating for Blend exists".
+- **Honest difference:**
+  - Only 2 pools and 4 factors: utilization 35%, collateral factor 25%, HHI 25%, depth 15%.
+  - **No** oracle source, backstop and Q4W, pool status or collateral market depth.
+  - The result: it gives **"A"** to YieldBlox V2, whose on-chain status is On_Ice, whose Q4W is 97.75% and whose `update_status()` simulation returns Frozen, and "B" to Fixed V2.
+  - No license, 4 stars, no SCF funding, no on-chain publishing.
+- **For the application:**
+  - It does not weaken the application as a competitor, but it rules out a "first" claim.
+  - A public example of the argument "utilization/TVL-based scores show a frozen pool as safe". The same error as our YieldPilot `/api/scan` example.
 
 ### 3) Stellar Oracle Shield (Sun Zu Lab, SCF #43)
-- **Örtüşme:** Mimari olarak en yakın proje.
-  - Bir operator skoru Soroban kontratına yazıyor.
-  - Staleness kontrolü var (varsayılan 3,600 s).
-  - Dokümanı tüketicilere fail-closed davranmayı öneriyor.
-  - Rust client crate'i yayında.
-- **Fark:**
-  - Varlık çifti seviyesinde ve protokol geliştiricisine yönelik. Vigil havuz ve vault seviyesinde, depositor'ın smart account'una yönelik.
-  - Oracle Shield'de enforcement'ı protokol kendi kontratında yazıyor. Vigil'de kullanıcı OZ policy'siyle yapıyor.
-  - Bugün testnet'te ve tek operator'lü. Mainnet ve 2-of-3 henüz yok.
-- **Reviewer'ın soracağı:** "Oracle Shield'in kontratına neden pool anahtarı eklemiyorsunuz?" Cevap hazır olmalı:
-  - Havuz rating'inin girdileri oracle sağlığından fazlası: backstop, status, collateral parametreleri, admin.
-  - Tüketici tarafı farklı: protokol değil, kullanıcının policy'si.
-  - Vigil, collateral çiftleri için Oracle Shield'in `get_status`'ünü girdi olarak okuyacak.
+- **Overlap:** Architecturally the closest project.
+  - An operator writes the score to a Soroban contract.
+  - It has a staleness check (default 3,600 s).
+  - Its documentation recommends that consumers fail closed.
+  - Its Rust client crate is published.
+- **Difference:**
+  - It works at asset-pair level and is aimed at protocol developers. Vigil works at pool and vault level and is aimed at the depositor's smart account.
+  - In Oracle Shield, the protocol writes the enforcement in its own contract. In Vigil, the user does it with an OZ policy.
+  - Today it is on testnet with a single operator. Mainnet and 2-of-3 do not exist yet.
+- **What a reviewer will ask:** "Why don't you add a pool key to Oracle Shield's contract?" The answer should be ready:
+  - A pool rating's inputs are more than oracle health: backstop, status, collateral parameters, admin.
+  - The consumer side is different: the user's policy, not the protocol.
+  - Vigil will read Oracle Shield's `get_status` as an input for collateral pairs.
 
 ### 4) Hypernative (SCF #26)
-- **Örtüşme:**
-  - SDF'nin kendi tutorial'ı Blend havuzunda `get_reserve()` okuyup utilization alarmı kurmayı gösteriyor.
-  - Stellar için "ecosystem package" kapsamında, erişim ağ tarafından sponsorlanıyor (alt ajanın bulgusu).
-  - Alarm aksiyonları arasında on-chain kontrat çağrısı var.
-- **Fark:**
-  - Yayınlanan bir rating değil, her müşterinin kendi kurduğu izleme.
-  - Kapalı kaynak. Sonuç kullanıcının hesabında zorlanmıyor.
-  - Stellar'da otomatik pause doğrulanamadı.
-- **Başvuru için:** Rakip değil, kanal. Vigil'in rating düşüşü bir Hypernative alarm koşulu olabilir.
+- **Overlap:**
+  - SDF's own tutorial shows how to read `get_reserve()` on a Blend pool and set up a utilization alert.
+  - For Stellar it comes under an "ecosystem package", with access sponsored by the network (a sub-agent's finding).
+  - Alert actions include an on-chain contract call.
+- **Difference:**
+  - Not a published rating, but monitoring that each customer sets up themselves.
+  - Closed source. The result is not enforced in the user's account.
+  - Automatic pause on Stellar could not be verified.
+- **For the application:** Not a competitor, a channel. A drop in a Vigil rating could be a Hypernative alert condition.
 
 ### 5) DD / Webacy (SCF #38)
-- **Örtüşme:** EVM'de olgun bir vault rating ürünü var. Çıktıları:
-  - 0–100 skor ve A+–F notu
+- **Overlap:** It has a mature vault rating product on EVM. Its outputs:
+  - a 0–100 score and an A+–F grade
   - `listing_verdict`
   - `withdrawal_state`
-  - ~20 alt skor ve oracle weakest-link modeli
+  - ~20 sub-scores and an oracle weakest-link model
 
-  DeFindex vault'larına uyarlanması teknik olarak kısa iş. Ekip Stellar'da zaten SCF fonlu.
-- **Fark (bugün):**
-  - Stellar ürünü yalnızca adres ve token riski, beta. Vault kapsamı 6 EVM zinciri; Stellar yok.
-  - Submission'da Soroban açıkça kapsam dışı.
-  - Off-chain ve kapalı.
-- **Risk:** Vigil'in T1–T2 penceresinde Webacy'nin vault rating'lerini Stellar'a taşıma ihtimali gerçek ama kanıtlanmış değil.
+  Adapting it to DeFindex vaults is technically a short job. The team is already SCF-funded on Stellar.
+- **Difference (today):**
+  - The Stellar product is only address and token risk, in beta. Vault coverage is 6 EVM chains; no Stellar.
+  - The submission explicitly puts Soroban out of scope.
+  - Off-chain and closed.
+- **Risk:** The chance that Webacy brings its vault ratings to Stellar within Vigil's T1–T2 window is real but not proven.
 
-### Ayrıca: Blend'in kendi pool status'u (bir "proje" değil, ama en güçlü itiraz)
-- **Durum:** Pool seviyesinde zaten on-chain bir deposit gate var (Frozen). Vigil'in neden gerekli olduğunu üç dürüst cevap açıklıyor:
-  1. Status yalnızca backstop Q4W ve eşiğe bakıyor. Oracle ve collateral yapılandırmasına bakmıyor; 22 Şubat 2026'daki YieldBlox kaybı bu sınıftandı (BlockSec ve Halborn'a göre pool konfigürasyon hatası).
-  2. Status tembel. YieldBlox V2'de kimse `update_status()` çağırmadığı için deposit'ler hâlâ açık.
-  3. Kullanıcıya özgü eşik yok.
-- **Uyarı:** (2) bir keeper ile çözülebilir. Vigil bunu kendi değeri olarak satmamalı; isterse tek bir keeper deliverable'ı olarak eklemeli.
+### Also: Blend's own pool status (not a "project", but the strongest objection)
+- **Situation:** There is already an on-chain deposit gate at pool level (Frozen). Three honest answers explain why Vigil is needed:
+  1. Status only looks at the backstop Q4W and the threshold. It does not look at the oracle and collateral configuration; the YieldBlox loss of 22 February 2026 was of this class (a pool configuration error, according to BlockSec and Halborn).
+  2. Status is lazy. On YieldBlox V2, deposits are still open because nobody has called `update_status()`.
+  3. There is no per-user threshold.
+- **Caution:** (2) can be solved with a keeper. Vigil should not sell this as its own value; if it wants, it should add it as a single keeper deliverable.
 
 ---
 
-## 3. Positioning paragrafı (İngilizce, 148 kelime, yapıştırmaya hazır)
+## 3. Positioning paragraph (English, 148 words, ready to paste)
 
 > Stellar already has off-chain risk data for Blend: Alterscope (SCF #24/#26) serves risk reads for Blend lending markets through an API, Riskon publishes letter grades for two Blend V2 pools, and Hypernative supports custom Blend monitors. Blend itself gates deposits on-chain through pool status, which follows backstop withdrawal queues. Vigil adds three things. It rates every Blend V2 pool and DeFindex vault from pool configuration: the oracle source behind each collateral, backstop size and queue, pool status and reserve parameters. It publishes signed ratings to a Soroban RiskRegistry from an M-of-N publisher set. And a RiskGate policy lets an OpenZeppelin smart account refuse new deposits when a rating drops or goes stale, while withdrawals always stay open. Vigil is designed to take Stellar Oracle Shield (SCF #43) pair-health scores and Blend's own status as inputs. Its users are wallets, DeFindex vault managers and agents, starting with our YieldPilot.
 
-**Not:**
-- "first", "only" ve "no existing" bilerek kullanılmadı.
-- "DeFindex vault" rating'i, vault'un stratejilerinin altındaki Blend havuzlarından türetilecek. Bu metodoloji başvuruda yazılı olmalı.
-- Oracle Shield bugün yalnızca testnet'te. "is designed to take" ifadesi bu yüzden seçildi.
+**Note:**
+- "first", "only" and "no existing" were deliberately not used.
+- The "DeFindex vault" rating will be derived from the Blend pools under the vault's strategies. This methodology should be written out in the application.
+- Oracle Shield is only on testnet today. That is why the phrase "is designed to take" was chosen.
 
 ---
 
-## 4. Doğrulayamadığım iddialar
+## 4. Claims I could not verify
 
-1. **Alterscope Blend skorları:** Blend fırsatlarının gerçekten risk bandı veya faktör skoru taşıyıp taşımadığını göremedim.
-   - Neden: `/v2/yield/opportunities` API key istiyor. `/v2/factors/opportunity/…` `catalog_unavailable` döndü. Hesap açmadım.
-   - Ana sayfadaki "Blend USDC reserve … elevated" satırı "illustrative" diye etiketli.
-2. **Alterscope autonomous strategies:** Stellar endpoint'leri sadece OpenAPI spec'inde görüldü. Canlı olup olmadıklarını, hangi smart-wallet kontratını kullandıklarını (OZ mu, kendi kontratları mı) ve hangi Blend havuzuna supply yapacaklarını doğrulayamadım. `GET /v2/autonomous-strategies` auth istiyor.
-3. **Alterscope kimlik eşlemesi:** `risk-scores` sorgusundaki `no_risk_score_coverage` sonucunun gerçekten "kapsam yok" anlamına mı geldiğini, yoksa Alterscope'un Blend havuzları için farklı bir ID formatı mı kullandığını bilmiyorum.
-4. **Riskon:** "Selected for SCF 2024 Q1" iddiası ve testnet kontratının yalnızca cüzdan tier'ı tuttuğu bilgisi alt ajanın bulgusu, ben kontratı okumadım.
-5. **Hypernative:** SCF #26 ödülünün neyi kapsadığı (sayfada deliverable yok) ve Stellar'da otomatik on-chain yanıtın çalışıp çalışmadığı.
-6. **Hypernative erişimi:** Stellar erişiminin "ecosystem package" ile sponsorlandığı bilgisi (2024 tarihli Alchemy yazısı, alt ajanın bulgusu).
-7. **Oracle Shield mainnet:** T3 deliverable'ı (mainnet, 2-of-3 quorum, isimli protokol entegrasyonu). Tarihi 2026-09-11'di; README'de mainnet yok, gecikmiş görünüyor ama SCF'den teyit yok.
-8. **Webacy:** Stellar API'sinin beta'dan çıkıp çıkmadığı ve "≥2 Stellar protocol partners" hedefine ulaşılıp ulaşılmadığı.
-9. **Hoops:** "Risk-assessed vaults" ifadesinin arkasında bir skor olup olmadığı ve #30'daki "Blend weighted pools and backstop" deliverable'ının bitip bitmediği. app.hoops.finance `dashboard-ui-dev.hoops.fi`'ye yönleniyor.
-10. **Fon farkları:** DB `awarded_total` ile SCF sayfası arasındaki farkların anlamı (ödenmiş tranche olduğu çıkarımı). Policywright $55K ve Merkle Science $138K değerleri alt ajanın bulgusu.
-11. **† satırları (EVM):** Credora–Euler entegrasyonu, Chaos Labs'in Aave'den ayrılış koşulları, Exponential'ın kapanış ifadesi (sayfa bloklu, sadece search snippet), Block Analitica'nın 2026 aktivitesi.
-12. **Diğer SCF projeleri:** CertiK, CyVers, Merkle Science ve Range'in Stellar ürünlerinin canlıya çıkıp çıkmadığı; Range'in #34 ödülü; Untangled Credio'nun Stellar mainnet'te olup olmadığı.
-13. **Aktivitesine bakmadığım adjacent projeler:** Blip (#28, kontrat izleme), Solarkraft (#24/#29, runtime monitoring), SAFU (#44, cüzdan sigorta havuzu), Trustline (#44, kurumsal erişim kontrolü ve sigorta), Cushion (#41), One Click (#32, "AI-powered risk assessments"), Sentora ve Upshift'in Stellar vault'ları. Hiçbirinin havuz rating'i yayınladığına dair bir işaret görmedim, ama derinlemesine incelemedim.
-14. **X (Twitter):** Gönderileri okunamadı (HTTP 402). "Son aktivite" sütunu GitHub, blog ve API kanıtına dayanıyor.
+1. **Alterscope Blend scores:** I could not see whether the Blend opportunities actually carry a risk band or factor scores.
+   - Why: `/v2/yield/opportunities` requires an API key. `/v2/factors/opportunity/…` returned `catalog_unavailable`. I did not open an account.
+   - The "Blend USDC reserve … elevated" line on the home page is labelled "illustrative".
+2. **Alterscope autonomous strategies:** The Stellar endpoints were only seen in the OpenAPI spec. I could not verify whether they are live, which smart-wallet contract they use (OZ or their own) or which Blend pool they would supply to. `GET /v2/autonomous-strategies` requires auth.
+3. **Alterscope ID mapping:** I do not know whether the `no_risk_score_coverage` result of the `risk-scores` query really means "no coverage", or whether Alterscope uses a different ID format for Blend pools.
+4. **Riskon:** The "Selected for SCF 2024 Q1" claim and the information that the testnet contract only holds a wallet tier are a sub-agent's findings; I did not read the contract.
+5. **Hypernative:** What the SCF #26 award covers (the page lists no deliverables) and whether an automatic on-chain response works on Stellar.
+6. **Hypernative access:** The information that Stellar access is sponsored through an "ecosystem package" (an Alchemy article dated 2024, a sub-agent's finding).
+7. **Oracle Shield mainnet:** The T3 deliverable (mainnet, 2-of-3 quorum, a named protocol integration). Its date was 2026-09-11; the README has no mainnet, so it looks late, but there is no confirmation from SCF.
+8. **Webacy:** Whether its Stellar API has left beta, and whether the "≥2 Stellar protocol partners" target was reached.
+9. **Hoops:** Whether there is a score behind the phrase "risk-assessed vaults", and whether the "Blend weighted pools and backstop" deliverable in #30 is finished. app.hoops.finance redirects to `dashboard-ui-dev.hoops.fi`.
+10. **Funding differences:** What the differences between the DB `awarded_total` and the SCF page mean (the inference that they are paid tranches). The Policywright $55K and Merkle Science $138K values are a sub-agent's findings.
+11. **† rows (EVM):** The Credora–Euler integration, the terms of Chaos Labs' exit from Aave, Exponential's closure statement (page blocked, only a search snippet), Block Analitica's 2026 activity.
+12. **Other SCF projects:** Whether the Stellar products of CertiK, CyVers, Merkle Science and Range went live; Range's #34 award; whether Untangled Credio is on Stellar mainnet.
+13. **Adjacent projects whose activity I did not check:** Blip (#28, contract monitoring), Solarkraft (#24/#29, runtime monitoring), SAFU (#44, wallet insurance pool), Trustline (#44, institutional access control and insurance), Cushion (#41), One Click (#32, "AI-powered risk assessments"), and Sentora's and Upshift's Stellar vaults. I saw no sign that any of them publishes pool ratings, but I did not examine them in depth.
+14. **X (Twitter):** Posts could not be read (HTTP 402). The "last activity" column is based on GitHub, blog and API evidence.
 
 ---
 
-## Kaynaklar (hepsine 2026-11-01'de erişildi)
+## Sources (all accessed on 2026-11-01)
 
 **Alterscope**
 - https://www.alterscope.org/ · https://www.alterscope.org/agents · https://www.alterscope.org/curators · https://www.alterscope.org/about · https://www.alterscope.org/insights
@@ -233,7 +233,7 @@ Kısaltmalar:
 
 **Gateway.fm:** https://communityfund.stellar.org/submissions/recTFz7yIm9fWFHSx
 
-**Hypernative:** https://stellar.org/blog/developers/monitoring-stellar-with-hypernative (yayın 2026-07-16) · https://communityfund.stellar.org/project/hypernative-ik0 †
+**Hypernative:** https://stellar.org/blog/developers/monitoring-stellar-with-hypernative (published 2026-07-16) · https://communityfund.stellar.org/project/hypernative-ik0 †
 
 **Blockaid:** https://blockaid.io/blog/73-quarantined-how-blockaid-and-stellar-validators-contained-a-10m-price-manipulation-attack † · https://blockaid.io/blog/stellar-bolsters-ecosystem-wide-security-with-blockaid †
 
@@ -248,12 +248,12 @@ Kısaltmalar:
 **Blend**
 - https://docs.blend.capital/users/choosing-pools · https://docs.blend.capital/tech-docs/core-contracts/lending-pool/pool-management (github.com/blend-capital/docs-v2 @2026-10-07)
 - https://github.com/blend-capital/blend-ui (@2026-10-26: `.env.production`, `src/utils/version.ts`, `src/components/pool/PoolStatusBanner.tsx`)
-- Mainnet okuması ve `update_status` simülasyonu (tx gönderilmedi): `mainnet.sorobanrpc.com`, 2026-11-01T14:40Z
-  - Fixed V2: status 3, Q4W %6.59
-  - YieldBlox V2: status 3, Q4W %97.75, simülasyon sonucu → 5
+- Mainnet read and `update_status` simulation (no tx sent): `mainnet.sorobanrpc.com`, 2026-11-01T14:40Z
+  - Fixed V2: status 3, Q4W 6.59%
+  - YieldBlox V2: status 3, Q4W 97.75%, simulation result → 5
 
 **DeFindex:** https://docs.defindex.io/advanced-documentation/risks-and-audits.md · https://docs.defindex.io/strategies/blend-autocompound.md · https://www.defindex.io/strategies
 
-**YieldBlox olayı:** https://blocksec.com/blog/yieldblox-dao-incident-on-stellar-oracle-misconfiguration-enabled-a-10m-drain · https://www.halborn.com/blog/post/explained-the-yieldblox-hack-february-2026
+**YieldBlox incident:** https://blocksec.com/blog/yieldblox-dao-incident-on-stellar-oracle-misconfiguration-enabled-a-10m-drain · https://www.halborn.com/blog/post/explained-the-yieldblox-hack-february-2026
 
-**Ecosystem DB:** https://github.com/lumenloop/stellar-ecosystem-db (yerel snapshot `efaa048`, 2026-10-30)
+**Ecosystem DB:** https://github.com/lumenloop/stellar-ecosystem-db (local snapshot `efaa048`, 2026-10-30)

@@ -1,7 +1,7 @@
-# Vigil: SCF Interest Form taslağı
+# Vigil: SCF Interest Form draft
 
-> `scf-interest-form-drafter` skill'inin formatında. Form İngilizce doldurulur. Referral isteyeceksen önce bu form gönderilmeli; referrer projeyi listeden isimle seçiyor.
-> İçerik `vigil-application.md` ile aynı tutulmalı; birinde değişen diğerinde de değişmeli. Son eşitleme: 2026-11-02, engine v2.5, bütçe $65,400.
+> In the format of the `scf-interest-form-drafter` skill. The form is filled in in English. If a referral will be requested, submit this form first: the referrer picks the project from the list by name.
+> Keep the content in line with the application (`submission.md`); a change in one is made in the other. Last synced: 2026-11-02, engine v2.5, budget $65,400.
 
 ## Interest Form Draft: Vigil
 
@@ -42,9 +42,9 @@ It is timely for two reasons. OpenZeppelin smart accounts are becoming the stand
 ---
 
 ### Draft Notes
-- **Form gönderildiyse** bu dosya yalnızca kayıt; tam başvuru `submission.md`.
-- **InstAward linkleri: ✅** Team satırlarında.
-- **Ambassador ilişkisi: ✅** açıkça yazıldı.
-- **"İlk/tek" iddiası yok.** Alterscope, Riskon ve Stenion zaten Blend'i puanlıyor; böyle kalsın.
-- **M-of-N:** registry bugün 1-of-1; metin bunu söylüyor, değiştirme.
-- **Referral:** önce formu gönder, sonra Ambassador Chapter / Rise In kontağına sor.
+- **Once the form is submitted,** this file is only a record; the full application is `submission.md`.
+- **InstAward links: ✅** in the Team lines.
+- **Ambassador relationship: ✅** stated openly.
+- **No "first" or "only" claim.** Alterscope, Riskon and Stenion already score Blend; keep it that way.
+- **M-of-N:** the registry is 1-of-1 today; the text says so, and should keep saying so.
+- **Referral:** submit the form first, then ask the Ambassador Chapter / Rise In contact.

@@ -118,8 +118,8 @@ Rating-gated enforcement is offered on EVM (Newton, with Credora ratings as an i
 
 
 ## Team
-- **Göktuğ Oğuz Güngör: lead engineer.** Cloud & platform engineer. Built YieldPilot (yieldpilot.org; Stellar InstAward, $5K, [the team's announcement, 2026-11-01](https://x.com/AsteriaStellar/status/2116984521077727404)), Hourglass (github.com/Goguzgungor/hourglass), Soroban token streaming with linear, tranched and recurring streams and NFT receipts, on testnet with 111 contract tests, and Sonata, an API/MCP layer for Stellar contracts. During the grant Vigil is his main work (the plan takes 81% of his calendar time); Hourglass and Sonata get maintenance only. GitHub: github.com/Goguzgungor
-- **Melike Keçelioğlu: product manager.** Technical Product Owner (London), ex-Borsa İstanbul, and a Stellar Türkiye ambassador. Product lead of Vestellar (Rise In × Stellar InstAward, $5K, [Stellar Türkiye's post, 2026-07-22](https://x.com/Stellar_Turkey/status/2079809008613863608)). In Vigil she runs the public methodology review (1.2), publisher outreach (2.3) and integration outreach (3.4). Her work is product and partnerships, not code.
+- **Göktuğ Oğuz Güngör: lead engineer.** Cloud & platform engineer. Built YieldPilot (yieldpilot.org; Stellar InstAward, $5K, [the team's announcement, 2026-11-01](https://x.com/AsteriaStellar/status/2116984521077727404)), Hourglass (github.com/Goguzgungor/hourglass), Soroban token streaming with linear, tranched and recurring streams and NFT receipts, on testnet with 111 contract tests, and Sonata, an API/MCP layer for Stellar contracts. During the grant Vigil is the main work (the plan takes 81% of the lead engineer's calendar time); Hourglass and Sonata get maintenance only. GitHub: github.com/Goguzgungor
+- **Melike Keçelioğlu: product manager.** Technical Product Owner (London), ex-Borsa İstanbul, and a Stellar Türkiye ambassador. Product lead of Vestellar (Rise In × Stellar InstAward, $5K, [Stellar Türkiye's post, 2026-07-22](https://x.com/Stellar_Turkey/status/2079809008613863608)). In Vigil, Melike runs the public methodology review (1.2), publisher outreach (2.3) and integration outreach (3.4): product and partnership work, not code.
 
 ## Deliverables
 
@@ -154,7 +154,7 @@ T3 has no testnet fallback. If the Audit Bank report arrives late, 3.1, 3.2 and 
 
 ## Budget (bottom-up)
 
-Rates are within SCF's published rate benchmarks for Soroban and full-stack developers. The audit is not included; it goes through the Audit Bank. Göktuğ is the Soroban and full-stack engineer on all lines. Melike, as product manager, owns the non-engineering side of 1.2, 2.3 and 3.4; her time is not paid from this award. YieldPilot's InstAward funds the YieldPilot app itself: nothing in this budget pays for that work, and 3.5 covers only YieldPilot's RiskGate path on mainnet.
+Rates are within SCF's published rate benchmarks for Soroban and full-stack developers. The audit is not included; it goes through the Audit Bank. Göktuğ is the Soroban and full-stack engineer on all lines. Melike, as product manager, owns the non-engineering side of 1.2, 2.3 and 3.4; that time is not paid from this award. YieldPilot's InstAward funds the YieldPilot app itself: nothing in this budget pays for that work, and 3.5 covers only YieldPilot's RiskGate path on mainnet.
 
 | Tranche | Deliverable | Role | Effort | Rate | Cost |
 |---|---|---|---|---|---|

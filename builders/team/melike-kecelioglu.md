@@ -1,19 +1,19 @@
 # Melike Keçelioğlu: product manager
 
-- **Rol:** Technical Product Owner (Web3): smart contract geliştirme, dApp mimarisi, tokenomics. Konum London, UK.
-- **Linkler:** [GitHub](https://github.com/melkecelioglu) · [Site](https://melkecelioglu.github.io/) · [X](https://x.com/melkecelioglu) · [Medium](https://medium.com/@melkecelioglu)
-- **Stellar Türkiye ambassador.** Başvuruda açıkça yazıyor; Vestellar'ın InstAward duyurusu da Stellar Türkiye hesabından.
-- **Vestellar, Rise In × Stellar InstAward ($5,000):** [Stellar Türkiye'nin paylaşımı, 2026-07-22](https://x.com/Stellar_Turkey/status/2079809008613863608) · [Lumen Loop / Rise In yazısı, 2026-07-23](https://lumenloop.com/news/melike-kecelioglu-built-vestellar-stellar)
-- **SCF Build Award geçmişi yok.**
-- **Vigil'deki işi:** public metodoloji review'u (1.2), publisher görüşmeleri (2.3), entegrasyon görüşmeleri (3.4). Ürün ve partnerlik işi, kod değil. Zamanı bu ödülden ödenmiyor.
+- **Role:** Technical Product Owner (Web3): smart contract development, dApp architecture, tokenomics. Based in London, UK.
+- **Links:** [GitHub](https://github.com/melkecelioglu) · [Site](https://melkecelioglu.github.io/) · [X](https://x.com/melkecelioglu) · [Medium](https://medium.com/@melkecelioglu)
+- **Stellar Türkiye ambassador.** The application says so; Vestellar's InstAward announcement is also from the Stellar Türkiye account.
+- **Vestellar, Rise In × Stellar InstAward ($5,000):** [Stellar Türkiye's post, 2026-07-22](https://x.com/Stellar_Turkey/status/2079809008613863608) · [Lumen Loop / Rise In article, 2026-07-23](https://lumenloop.com/news/melike-kecelioglu-built-vestellar-stellar)
+- **No SCF Build Award history.**
+- **Work on Vigil:** the public methodology review (1.2), publisher conversations (2.3) and integration conversations (3.4). Product and partnership work, not code. This time is not paid from the award.
 
-## Kariyer
+## Career
 
-- Borsa İstanbul: geleneksel finans; treasury operasyonları, settlement, kurumsal iş akışları
-- Piku: Web3'e geçiş; token dağıtımı altyapısındaki açığı burada görmüş
-- Vestellar: Stellar'a özel token streaming ve vesting protokolü (investor vesting, payroll, grant, contributor ödülleri)
+- Borsa İstanbul: traditional finance; treasury operations, settlement, institutional workflows
+- Piku: the move to Web3, where the gap in token-distribution infrastructure became clear
+- Vestellar: a token streaming and vesting protocol built for Stellar (investor vesting, payroll, grants, contributor rewards)
 
-## Diğer zincirler / hackathonlar
+## Other chains / hackathons
 
-- Starknet (Star-User: verifiable credential tabanlı under-collateralized lending), Avalanche (voting dApp, validator), ETHGlobal Paris / Bangkok, ETHBrussels, Coinbase hack, Chainlink × Celo TR bootcamp
-- Yazılar (Mirror): USDT peg mekanizması, yield-bearing stablecoin'ler / USDtb, Protocol Owned Liquidity, treasury yönetimi
+- Starknet (Star-User: under-collateralized lending based on verifiable credentials), Avalanche (voting dApp, validator), ETHGlobal Paris / Bangkok, ETHBrussels, Coinbase hack, Chainlink × Celo TR bootcamp
+- Writing (Mirror): the USDT peg mechanism, yield-bearing stablecoins / USDtb, Protocol Owned Liquidity, treasury management
