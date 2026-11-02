@@ -20,3 +20,10 @@ cloudflare-env.d.ts
 loadtest-runs/
 .env.loadtest
 .env.prod.local
+# builders/: only the public application packet is tracked; drafts, reviews and notes stay local
+builders/reviews/
+builders/archive/
+builders/vigil-application.md
+builders/make-submission.py
+builders/letter-of-intent.md
+builders/notes-local.md
