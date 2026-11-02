@@ -78,7 +78,7 @@ Rates: Soroban $3,500 a week, full-stack $3,000 a week, infrastructure $400 a mo
 ## State on 2026-11-02 (16:02 UTC run)
 
 - 13 Blend pools (V2 + v2.1) and 4 DeFindex strategies rated: 5 pools graded, 8 not rated.
-- 4 of the 17 ratings accept deposits, all C 57: Fixed and DeFindex's three Fixed strategies. None reaches RiskGate's default minimum of 60, so YieldPilot holds.
+- 4 of the 17 ratings accept deposits, all C 57: Fixed and DeFindex's three Fixed strategies. None of them reaches RiskGate's default minimum of 60, so YieldPilot holds. The registry still publishes Fixed v2.1 at 64 with no eligibility flag, so another gate at the default minimum would accept it (deliverable 1.3).
 - Fixed v2.1 is C 64 and not eligible. At 13:59 UTC its USDC was 96.1% borrowed against a 90% `max_util`, and HR10 holds for 6 h after that read, so until about 19:59 UTC if no later read reaches it.
 - Publisher: cron-job.org calls `/api/cron/publish` at :00 and :30, which has worked since 14:00 UTC.
 

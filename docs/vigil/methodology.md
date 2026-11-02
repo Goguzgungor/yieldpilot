@@ -272,7 +272,7 @@ defindex | DeFindex USDC Etherfus | CCBTSH… | 4 Admin_Frozen | v2   |  53 |  6
 - **YieldBlox is not eligible (HR8)**: 97.8% of its backstop is queued, so one `update_status` call would freeze it. It is C 51 (HR9 as well).
 - **Orbit `CAE7QV…` is E 34 (HR3).** On the thinnest of the 8 CETES books the deployment read in the last 24 h (10:59 UTC), pushing CETES ×100 on SDEX costs $64.5K, plus $2.1K of collateral, to borrow $180.1K (ρ 0.37). A CLI run at 13:50 UTC, which had only that moment's book, read $148K (ρ 0.83). Its grade moved in and out of E on 2026-11-01 as its CETES book changed ($275 at 15:07 UTC, $253K at 19:17, $268 at 20:19). Since v2.3 it is rated on the thinnest book of the last 24 h, so once a thin book has been read the grade stays E for a day instead of flipping back within the hour. The pool is Admin_Frozen either way.
 - **8 pools are NR.** Five never launched (status 6). Forex ($456, whose oracle publishes no price for the three assets borrowed in it), Solv ($173) and Spectra ($10) hold too little to measure.
-- **4 of 17 ratings accept deposits:** Fixed and DeFindex's three Fixed strategies, all C 57. **No pool reaches the default RiskGate minimum of 60**, so the gate refuses every new deposit until one does. YieldPilot holds; withdrawals are never gated.
+- **4 of 17 ratings accept deposits:** Fixed and DeFindex's three Fixed strategies, all C 57. **None of them reaches the default RiskGate minimum of 60**, so YieldPilot takes no new deposit until one does; withdrawals are never gated. The registry itself still holds Fixed v2.1 at 64 with no eligibility flag, so a gate at the default minimum pointed at that pool would accept it (§9.8).
 
 ## 8. Backtest: YieldBlox before 22 Feb 2026
 
@@ -367,7 +367,7 @@ Effect on the live table: Fixed (V2) B 69 → C 57, DeFindex's Fixed strategies 
 | A reserve borrowed to or past its `max_util` | utilization factor 0 (weight 0.12), nothing else | **HR10**: not eligible, at most C (hard cap 64), for every reserve with ≥ $1K supplied |
 | Run archive | ratings plus a summary of each order book (level count, best ask) | every input, order books included, stored once by hash; `scripts/vigil-verify.ts` recomputes each hash, re-rates each pool and compares with the registry |
 
-Effect on the live table: Fixed v2.1 B 74 → C 64, eligible → not eligible. No pool reached RiskGate's default minimum of 60 at that run.
+Effect on the live table: Fixed v2.1 B 74 → C 64, eligible → not eligible. No eligible pool reached RiskGate's default minimum of 60 at that run; the registry still carried Fixed v2.1's 64 without the flag (§9.8).
 
 **v2.4 → v2.5 (2026-11-02).** The next reviews found HR10 flipping: 40 minutes after v2.4 went live, about $3K of new USDC took Fixed v2.1's reserve from 96.1% to 89.94% borrowed, under its 90% `max_util`, and the pool was back to B 75 and eligible. Both reviewers asked for hysteresis.
 
