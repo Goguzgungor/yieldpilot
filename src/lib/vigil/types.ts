@@ -119,6 +119,20 @@ export interface DexDepthSample extends DexDepth {
   refPriceUsd: number;
 }
 
+/**
+ * One earlier read of a reserve's supply and borrows, kept for HR10's window
+ * (v2.5): a reserve that reached its max_util in any read of the last
+ * THRESHOLDS.lockWindowSec keeps the pool locked.
+ */
+export interface UtilizationSample {
+  /** Unix seconds (the snapshot's chain time). */
+  sampledAt: number;
+  supplied: number;
+  borrowed: number;
+  maxUtil: number;
+  priceUsd: number | null;
+}
+
 export interface PoolSnapshot {
   poolId: string;
   name: string;
@@ -139,6 +153,8 @@ export interface PoolSnapshot {
   dexDepth: Record<string, DexDepth>;
   /** Earlier books of the same assets from the last THRESHOLDS.depthWindowSec, keyed by assetId (v2.3). */
   dexDepthHistory?: Record<string, DexDepthSample[]>;
+  /** Earlier reads of this pool's reserves from the last THRESHOLDS.lockWindowSec, keyed by assetId (v2.5). */
+  utilizationHistory?: Record<string, UtilizationSample[]>;
   /** Chain time the snapshot was taken at. */
   asOf: { timestamp: number; ledger?: number };
   /** Inputs that could not be read; each becomes a reason on the rating. */

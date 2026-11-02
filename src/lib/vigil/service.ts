@@ -9,8 +9,9 @@ import { historyFor, mergeDepthHistory, samplesOf, type DepthHistory, type Depth
 import { functionSource, stellarExpertDeploySource } from "./discovery";
 import { runVigil, toRatingsJson, type DefindexStrategyRef, type EngineResult } from "./engine";
 import { createLiveReaders, type BlendDeployment } from "./live";
+import { mergeUtilizationHistory, utilizationHistoryFor, type UtilizationHistory, type UtilizationHistoryStore } from "./utilizationHistory";
 
-export type { BlendDeployment, DepthHistoryStore };
+export type { BlendDeployment, DepthHistoryStore, UtilizationHistoryStore };
 
 export interface LiveRatingsConfig {
   rpcUrl: string;
@@ -27,6 +28,8 @@ export interface LiveRatingsConfig {
    * one, each run rates manipulation on the book it reads (v2.2 behaviour).
    */
   depthHistory?: DepthHistoryStore;
+  /** Where earlier reserve reads are kept for HR10's window. Without one, HR10 sees the current read only (v2.4 behaviour). */
+  utilizationHistory?: UtilizationHistoryStore;
   log?(msg: string): void;
 }
 
@@ -64,6 +67,14 @@ export async function runLiveVigil(cfg: LiveRatingsConfig): Promise<EngineResult
       cfg.log?.(`depth history unavailable, rating on single reads: ${(e as Error).message}`);
     }
   }
+  let pastUtil: UtilizationHistory = {};
+  if (cfg.utilizationHistory) {
+    try {
+      pastUtil = await cfg.utilizationHistory.load();
+    } catch (e) {
+      cfg.log?.(`utilization history unavailable, HR10 on the current read only: ${(e as Error).message}`);
+    }
+  }
   const result = await runVigil(
     {
       sources,
@@ -72,7 +83,8 @@ export async function runLiveVigil(cfg: LiveRatingsConfig): Promise<EngineResult
       snapshot: async (poolId) => {
         const s = await live.snapshot(poolId);
         const dexDepthHistory = historyFor(s, past);
-        return dexDepthHistory ? { ...s, dexDepthHistory } : s;
+        const utilizationHistory = utilizationHistoryFor(s, pastUtil);
+        return { ...s, ...(dexDepthHistory ? { dexDepthHistory } : {}), ...(utilizationHistory ? { utilizationHistory } : {}) };
       },
       readStrategy: live.readStrategy,
       log: cfg.log,
@@ -85,6 +97,13 @@ export async function runLiveVigil(cfg: LiveRatingsConfig): Promise<EngineResult
       await cfg.depthHistory.save(mergeDepthHistory(past, fresh, result.computedAt));
     } catch (e) {
       cfg.log?.(`depth history not saved: ${(e as Error).message}`);
+    }
+  }
+  if (cfg.utilizationHistory) {
+    try {
+      await cfg.utilizationHistory.save(mergeUtilizationHistory(pastUtil, Object.values(result.snapshots), result.computedAt));
+    } catch (e) {
+      cfg.log?.(`utilization history not saved: ${(e as Error).message}`);
     }
   }
   return result;

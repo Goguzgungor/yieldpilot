@@ -13,7 +13,7 @@ const empty = backstop({ usdc: 0, blnd: 0, meetsThreshold: false });
 
 describe("v2.3 scoring", () => {
   it("is versioned", () => {
-    expect(ENGINE_VERSION).toMatch(/^vigil-risk-v2\.[34]\./);
+    expect(ENGINE_VERSION).toMatch(/^vigil-risk-v2\.[345]\./);
   });
 });
 

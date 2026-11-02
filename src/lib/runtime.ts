@@ -31,6 +31,8 @@ import {
 import type { Position, ScoredPool, Decision, YieldSource } from "./types";
 import { computeLiveRatings, type RatingsJson } from "./vigil/service";
 import { splitBooks } from "./vigil/audit";
+import { THRESHOLDS } from "./vigil/score";
+import { utilizationHistoryFromRuns } from "./vigil/utilizationHistory";
 import { nextBookIndex, nextRunIndex, packRun, publishRatings, unpackRun, type PublishOutcome } from "./vigil/publish";
 import { gateByVigil, vigilCandidatePools, type VigilVerdict } from "./vigilGate";
 
@@ -737,6 +739,19 @@ export async function getRatings(opts: { refresh?: boolean } = {}): Promise<Cach
     depthHistory: {
       load: async () => JSON.parse((await rt.db.getKV("vigilDepthHistory")) ?? "{}"),
       save: (h) => rt.db.setKV("vigilDepthHistory", JSON.stringify(h)),
+    },
+    utilizationHistory: {
+      // An empty store (first deploy) is rebuilt from the archived runs of the window.
+      load: async () => {
+        const raw = await rt.db.getKV("vigilUtilHistory");
+        if (raw) return JSON.parse(raw);
+        const nowSec = Math.floor(Date.now() / 1000);
+        const recent = (await listArchivedRuns()).filter((at) => at >= nowSec - THRESHOLDS.lockWindowSec);
+        // The stored run, without putting its order books back: only the reserves are read.
+        const runs = await Promise.all(recent.map(async (at) => JSON.parse(unpackRun((await rt.db.getKV(`vigilRun:${at}`)) || packRun("{}")))));
+        return utilizationHistoryFromRuns(runs, nowSec);
+      },
+      save: (h) => rt.db.setKV("vigilUtilHistory", JSON.stringify(h)),
     },
     defindexStrategies: rt.cfg.scanDefindexStrategies.map((s) => ({
       strategyId: s.strategyId,

@@ -115,7 +115,7 @@ const RULES: Array<{ code: string; text: (rule: string) => string }> = [
     code: "HR10",
     text: (rule) => {
       const m = rule.match(/HR10 (\S+) is ([\d.]+%) borrowed/);
-      return `Lenders are locked in: ${m ? `${m[1]} is ${m[2]} borrowed, ` : "a reserve is "}at or past its borrowing limit, so only what is not lent out can be withdrawn`;
+      return `Lenders are locked in: ${m ? `${m[1]} (${m[2]} borrowed now) ` : "a reserve "}reached its borrowing limit within the last 6 h, so only what is not lent out can be withdrawn`;
     },
   },
   {

@@ -21,7 +21,7 @@ import {
   type DexDepthSample,
 } from "./types";
 
-export const ENGINE_VERSION = "vigil-risk-v2.4.0";
+export const ENGINE_VERSION = "vigil-risk-v2.5.0";
 
 /**
  * Factor weights (sum = 1). v2.1 dropped the pool_status factor: Blend's
@@ -157,6 +157,11 @@ export const THRESHOLDS = {
    * not one read, so a rating does not flip as asks come and go (v2.3).
    */
   depthWindowSec: 86_400,
+  /**
+   * HR10 holds while any read of a reserve in this window was at or past its
+   * max_util, so a pool hovering at the line does not flip run by run (v2.5).
+   */
+  lockWindowSec: 6 * 3600,
   /** Comet backstop token is 80/20 BLND/USDC ⇒ spot value = 5 × USDC (backstop/src/backstop/pool.rs). */
   cometUsdcMultiplier: 5,
 } as const;
@@ -518,20 +523,39 @@ export function pendingFreeze(s: PoolSnapshot): string | null {
 
 /**
  * Why lenders cannot get out (HR10), or null: a reserve with material supply is
- * borrowed to or past its own max_util. Blend lends no more of it there, and its
+ * borrowed to or past its own max_util now, or was in any read of the last
+ * THRESHOLDS.lockWindowSec (v2.5). Blend lends no more of it there, and its
  * lenders can withdraw only what is not borrowed until borrowers repay. A
  * reserve without a price is left out (its supply cannot be measured; HR2
  * already applies).
  */
-export function lendersLockedIn(d: Derived[]): string | null {
-  const locked = d.filter((x) => x.suppliedUsd >= THRESHOLDS.minLiquidityUsd && x.r.maxUtil > 0 && x.r.borrowed / x.r.supplied >= x.r.maxUtil);
-  if (!locked.length) return null;
-  return locked
-    .map((x) => {
-      const u = x.r.borrowed / x.r.supplied;
-      return `${x.r.symbol} is ${pct(u)} borrowed, ${u > x.r.maxUtil ? "past" : "at"} its ${pct(x.r.maxUtil)} max_util: ${fmtUsd(x.suppliedUsd - x.borrowedUsd)} of ${fmtUsd(x.suppliedUsd)} can be withdrawn`;
-    })
-    .join("; ");
+export function lendersLockedIn(s: PoolSnapshot, d: Derived[]): string | null {
+  const now = s.asOf.timestamp;
+  const out: string[] = [];
+  for (const x of d) {
+    const r = x.r;
+    if (!x.priced || r.maxUtil <= 0) continue;
+    const u = r.supplied > 0 ? r.borrowed / r.supplied : 0;
+    const free = `${fmtUsd(x.suppliedUsd - x.borrowedUsd)} of ${fmtUsd(x.suppliedUsd)} can be withdrawn`;
+    if (x.suppliedUsd >= THRESHOLDS.minLiquidityUsd && u >= r.maxUtil) {
+      out.push(`${r.symbol} is ${pct(u)} borrowed, ${u > r.maxUtil ? "past" : "at"} its ${pct(r.maxUtil)} max_util: ${free}`);
+      continue;
+    }
+    const locked = (s.utilizationHistory?.[r.assetId] ?? []).filter(
+      (h) =>
+        h.sampledAt >= now - THRESHOLDS.lockWindowSec &&
+        h.sampledAt < now &&
+        h.maxUtil > 0 &&
+        h.supplied * (h.priceUsd ?? 0) >= THRESHOLDS.minLiquidityUsd &&
+        h.borrowed / h.supplied >= h.maxUtil,
+    );
+    if (!locked.length) continue;
+    const last = locked.reduce((a, b) => (b.sampledAt > a.sampledAt ? b : a));
+    out.push(
+      `${r.symbol} is ${pct(u)} borrowed, under its ${pct(r.maxUtil)} max_util now, but was ${pct(last.borrowed / last.supplied)} borrowed at ${utcTime(last.sampledAt)} UTC, within ${THRESHOLDS.lockWindowSec / 3600} h: ${free}`,
+    );
+  }
+  return out.length ? out.join("; ") : null;
 }
 
 /**
@@ -599,7 +623,7 @@ export function ratePool(s: PoolSnapshot, opts: RateOptions = {}): PoolRating {
     score = Math.min(score, HARD_CAPS.unverifiableCollateralSource);
     hardRules.push(`HR5 collateral price source unidentifiable (${opaque.map((x) => x.r.symbol).join(", ")}) ⇒ not eligible, grade ≤ C`);
   }
-  const locked = lendersLockedIn(d);
+  const locked = lendersLockedIn(s, d);
   if (locked) {
     eligible = false;
     score = Math.min(score, HARD_CAPS.lendersLockedIn);
@@ -732,6 +756,13 @@ export function hashInputs(s: PoolSnapshot): unknown {
               assetId: k,
               samples: s.dexDepthHistory![k].map((x) => ({ sampledAt: x.sampledAt, refPriceUsd: x.refPriceUsd, truncated: x.truncated, asksHash: sha256Canonical(x.asks) })),
             })),
+        }
+      : {}),
+    ...(s.utilizationHistory && Object.keys(s.utilizationHistory).length
+      ? {
+          utilizationHistory: Object.keys(s.utilizationHistory)
+            .sort()
+            .map((k) => ({ assetId: k, samples: s.utilizationHistory![k] })),
         }
       : {}),
     dataGaps: s.dataGaps,

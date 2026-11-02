@@ -6,6 +6,9 @@
  *   VIGIL_DEPTH_HISTORY=depth.json npx tsx scripts/vigil-ratings.ts …
  *       keep the SDEX books between runs in that file, so manipulation is rated
  *       on the thinnest book of the last 24 h (as the server does) instead of one read
+ *   VIGIL_UTIL_HISTORY=util.json npx tsx scripts/vigil-ratings.ts …
+ *       keep each reserve's reads between runs, so HR10 holds for 6 h after a
+ *       reserve reaches its max_util (as the server does) instead of one read
  *
  * Reads SCAN_* settings from .env (never prints secrets).
  */
@@ -49,6 +52,11 @@ try {
 }
 
 const historyPath = process.env.VIGIL_DEPTH_HISTORY;
+const utilPath = process.env.VIGIL_UTIL_HISTORY;
+const fileStore = (path: string) => ({
+  load: async () => (existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : {}),
+  save: async (h: unknown) => writeFileSync(path, JSON.stringify(h)),
+});
 const started = Date.now();
 const result = await runLiveVigil({
   rpcUrl,
@@ -56,14 +64,8 @@ const result = await runLiveVigil({
   deployments,
   curatedPoolIds: curated,
   defindexStrategies: strategies,
-  ...(historyPath
-    ? {
-        depthHistory: {
-          load: async () => (existsSync(historyPath) ? JSON.parse(readFileSync(historyPath, "utf8")) : {}),
-          save: async (h) => writeFileSync(historyPath, JSON.stringify(h)),
-        },
-      }
-    : {}),
+  ...(historyPath ? { depthHistory: fileStore(historyPath) } : {}),
+  ...(utilPath ? { utilizationHistory: fileStore(utilPath) } : {}),
   log: (m) => console.error(`[vigil] ${m}`),
 });
 

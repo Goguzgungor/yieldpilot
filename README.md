@@ -4,7 +4,7 @@
 
 **Vigil** is the risk layer underneath it, built so other wallets, vault managers and agents can use it too:
 
-- **Risk engine.** `src/lib/vigil`, with the methodology in `docs/vigil/methodology.md`. It rates every pool from Blend's V2 and v2.1 factories, and the DeFindex strategies built on them, from on-chain configuration: oracle source per collateral, SDEX depth over 24 h, backstop, status and reserves. Engine `vigil-risk-v2.4.0`, frozen for the SCF review round.
+- **Risk engine.** `src/lib/vigil`, with the methodology in `docs/vigil/methodology.md`. It rates every pool from Blend's V2 and v2.1 factories, and the DeFindex strategies built on them, from on-chain configuration: oracle source per collateral, SDEX depth over 24 h, backstop, status and reserves. Engine `vigil-risk-v2.5.0`, frozen for the SCF review round.
 - **`vigil-registry`.** A Soroban contract (`contracts/`) where publishers sign ratings and readers get a conservative M-of-N aggregate. Designed for several publishers; today there is one, ours, publishing every 30 minutes from the deployment (`/api/cron/publish`).
 - **`vigil-guard` (RiskGate).** An OpenZeppelin smart-account policy (`contracts/`):
   - Blend calls must keep funds in the user's account.

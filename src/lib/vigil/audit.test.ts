@@ -23,6 +23,7 @@ const snap: PoolSnapshot = {
   },
 };
 snap.reserves.push(ustry);
+snap.utilizationHistory = { [snap.reserves[0].assetId]: [{ sampledAt: T0 - 1800, supplied: 2_000_000, borrowed: 1_900_000, maxUtil: 0.9, priceUsd: 1 }] };
 
 async function archivedRun() {
   const r = await runVigil(

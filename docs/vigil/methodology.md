@@ -1,8 +1,8 @@
 # Vigil risk engine: methodology
 
-Engine version **`vigil-risk-v2.4.0`** (2026-11-02). Code: `src/lib/vigil/` (engine and tests), `scripts/vigil-ratings.ts` (live run), `scripts/vigil-backtest.ts` (backtest). What changed between versions, and why, is in §10.
+Engine version **`vigil-risk-v2.5.0`** (2026-11-02). Code: `src/lib/vigil/` (engine and tests), `scripts/vigil-ratings.ts` (live run), `scripts/vigil-backtest.ts` (backtest). What changed between versions, and why, is in §10.
 
-**v2.4 is frozen for the SCF review round.** Five versions shipped in two days, each after a blind review of the previous one's live output. v2.3 was announced as frozen; v2.4 breaks that once, for one rule (HR10, §5), because the v5 blind reviews found that the only pool passing the gate could not pay its lenders back. From here the methodology changes only through the external review in deliverable 1.2, and any change is published with the reviewer's notes and a new version number. The engine version is part of every `reasonsHash`, and every publishing run (every 30 minutes) is archived with everything it was computed from, order books included, so anyone can recompute each hash (§5, reasonsHash).
+**v2.5 is frozen for the SCF review round.** Six versions shipped in two days, each after an internal review of the previous one's live output (reviewers running the SCF review skills against the live site and the chain). v2.3 was announced as frozen and that was broken twice, both times for HR10 (§5): v2.4 added it after a review found that the only pool passing the gate could not pay its lenders back, and v2.5 gave it a 6 h window the same day, after it flipped between two runs. From here the methodology changes only through the external review in deliverable 1.2, and any change is published with the reviewer's notes and a new version number. The engine version is part of every `reasonsHash`, and every publishing run (every 30 minutes) is archived with everything it was computed from, order books included, so anyone can recompute each hash (§5, reasonsHash).
 
 Vigil gives a pool-level risk rating to every Blend pool on Stellar **mainnet**, from both Blend deployments that run the V2 pool code (V2, and v2.1 since 2026-09-30), and to DeFindex strategies built on those pools. It only reads data. Every contract read is a `simulateTransaction` of a view call. Nothing is signed or submitted.
 
@@ -166,7 +166,7 @@ Vigil reports the cheapest ρ. A ρ computed from a book that was fully observed
 | **HR2** | The price of a collateral, or of an asset with outstanding borrows, is stale or missing | Not eligible. Score ≤ 49, so grade ≤ D. |
 | **HR3** | SDEX-priced collateral with ρ < 1, computed from a fully observed book | Not eligible. Score ≤ 34, so **grade E**. |
 | **HR5** | Collateral whose price source cannot be identified (opaque, and no exact match) | Not eligible. Score ≤ 64. |
-| **HR10** | A reserve with ≥ $1K supplied is borrowed **to or past its own `max_util`** | Not eligible. Score ≤ 64, so grade ≤ C. The rule names what each such reserve's lenders can withdraw. |
+| **HR10** | A reserve with ≥ $1K supplied is borrowed **to or past its own `max_util`**, now or in any read of the **last 6 h** | Not eligible. Score ≤ 64, so grade ≤ C. The rule names what each such reserve's lenders can withdraw, and when the reserve was last at the line. |
 | **HR4** | Score < 50 | Not eligible |
 | **HR6** | A collateral priced by a source below the robust threshold (`sourceQuality` < 85: anything weaker than RedStone, Reflector CEX/FX or the base asset) | **At most B**, as a soft ceiling (below) |
 | **HR7** | The backstop does not count as first-loss capital: it is below Blend's threshold, **or ≥ 30% of it is queued for withdrawal** | **At most B**, as a soft ceiling |
@@ -176,9 +176,11 @@ Grade bands: A ≥ 80, B ≥ 65, C ≥ 50, D ≥ 35, E < 35.
 
 **Hard caps and soft ceilings.** HR2, HR3, HR5 and HR10 are hard caps: they describe conditions where the number below the cap carries no useful information. HR6 and HR7 share one **soft ceiling**, applied once even when both hold: scores above 65 are compressed linearly into 65–79 (`65 + (score − 65)·14/35`), so such pools top out at B but keep their order. A hard `min(score, 79)` would flatten all of them to the same number. HR9 is the same construction one band lower: `50 + (score − 50)·14/50`, so at most 64 (C). When HR9 holds it is the ceiling that applies.
 
-**Why HR9.** Under v2.2 Fixed (V2) was B 69 with $0 of backstop against $39.6M of borrows: the backstop factor was 0, but the other factors were good enough to carry it into B. Both blind reviews of 2026-11-02 called that generous, and it is: with no first-loss capital, any bad debt goes straight to lenders, however clean the oracle setup is. 1% is the line because at that cover a bad debt of 1% of the borrows already exceeds the backstop; full marks on the factor start at 10%. The cap is C, not D, because the pool's prices and collateral can still be sound: C says "lend here only if you accept carrying the first loss".
+**Why HR9.** Under v2.2 Fixed (V2) was B 69 with $0 of backstop against $39.6M of borrows: the backstop factor was 0, but the other factors were good enough to carry it into B. Both internal reviews of 2026-11-02 called that generous, and it is: with no first-loss capital, any bad debt goes straight to lenders, however clean the oracle setup is. 1% is the line because at that cover a bad debt of 1% of the borrows already exceeds the backstop; full marks on the factor start at 10%. The cap is C, not D, because the pool's prices and collateral can still be sound: C says "lend here only if you accept carrying the first loss".
 
-**Why HR10.** Under v2.3 Fixed v2.1 was B 74, the only pool above RiskGate's default minimum of 60, while its USDC reserve was 95.5–96.1% borrowed against its own `max_util` of 90%: of $43.6K supplied, about $1.7K could be withdrawn. The utilization factor was 0, but it weighs 12%, so the rest of the setup carried the pool into B. Both v5 blind reviews (2026-11-02) asked for this rule. Past `max_util` Blend lends no more of the asset, and its lenders can take out only what is not borrowed until borrowers repay or new lenders arrive; a new deposit is the first money that waiting lenders can withdraw and borrowers can draw. The cap is C, as for HR9: the pool's prices and collateral can still be sound. The pool is also not eligible, because a rating that sends deposits into a pool its lenders cannot leave fails the one question the grade answers. The $1K line is the one the utilization factor already uses, so dust reserves do not trigger it. A reserve without a price is left out (its supply cannot be valued, and HR2 already applies).
+**Why HR10.** Under v2.3 Fixed v2.1 was B 74, the only pool above RiskGate's default minimum of 60, while its USDC reserve was 95.5–96.1% borrowed against its own `max_util` of 90%: of $43.6K supplied, about $1.7K could be withdrawn. The utilization factor was 0, but it weighs 12%, so the rest of the setup carried the pool into B. Both internal reviews of v2.3 (2026-11-02) asked for this rule. Past `max_util` Blend lends no more of the asset, and its lenders can take out only what is not borrowed until borrowers repay or new lenders arrive; a new deposit is the first money that waiting lenders can withdraw and borrowers can draw. The cap is C, as for HR9: the pool's prices and collateral can still be sound. The pool is also not eligible, because a rating that sends deposits into a pool its lenders cannot leave fails the one question the grade answers. The $1K line is the one the utilization factor already uses, so dust reserves do not trigger it. A reserve without a price is left out (its supply cannot be valued, and HR2 already applies).
+
+**Why 6 h (v2.5).** A rule on a line flips when a reserve hovers at it. Fixed v2.1's USDC was 96.1% borrowed at 13:50 UTC on 2026-11-02 (C 64, not eligible) and 89.94% at 14:32 after about $3K of new supply (B 75, eligible): a 0.1-point move swung the score 11 points across the gate's minimum. Since v2.5 every run stores each reserve's supply and borrows, and HR10 holds while any read of the last 6 h was at or past `max_util`; the reads are part of the snapshot, so they are in `reasonsHash` and the archive. 6 h is twelve publishing runs: one deposit cannot reopen the pool within the hour, and a pool whose borrowers have repaid is not kept closed for most of a day, as the 24 h SDEX window would. The window was rebuilt from the archived runs when v2.5 went live, so it did not start empty.
 
 **Why HR8.** YieldBlox read On_Ice with 97.8% of its backstop queued to leave, and v2.2 marked it eligible. Blend's own rule freezes such a pool at 60% (75% when the admin set On_Ice), but only when someone calls `update_status`, which anyone can. HR8 applies Blend's rule before the call is made. Like HR1 it decides eligibility, not the grade.
 
@@ -321,7 +323,7 @@ actually extracted: $10.87M
 
 ## 10. Version history
 
-All five versions ran on 2026-11-01/02 against the same chain. Each change came from a review of the previous version's live output. v2.4 is frozen for the review round (see the top of this document).
+All six versions ran on 2026-11-01/02 against the same chain. Each change came from an internal review of the previous version's live output. v2.5 is frozen for the review round (see the top of this document).
 
 **v2.0 → v2.1 (2026-11-01).** v2.0 gave every non-active pool the same 49 (D): once Blend's V2 backstop was drained, every pool fell into that cap and the differences that matter disappeared.
 
@@ -333,7 +335,7 @@ All five versions ran on 2026-11-01/02 against the same chain. Each change came 
 | Weak collateral price source | factor only | HR6: at most B |
 | "At most B" | n/a | the soft ceiling (§5) |
 
-**v2.1 → v2.2 (2026-11-02).** Two independent blind reviews of v2.1 (2026-11-01) found that empty pools scored highest, that an unpriced debt made a pool look safer, that utilization averaged away a 99%-borrowed reserve, and that the v2.1 deployment was not covered.
+**v2.1 → v2.2 (2026-11-02).** Two internal reviews of v2.1 (2026-11-01) found that empty pools scored highest, that an unpriced debt made a pool look safer, that utilization averaged away a 99%-borrowed reserve, and that the v2.1 deployment was not covered.
 
 | | v2.1 | v2.2 |
 |---|---|---|
@@ -346,7 +348,7 @@ All five versions ran on 2026-11-01/02 against the same chain. Each change came 
 
 Effect on the live table: v2.1 had 11 B's (71–75), four of them for pools holding $173 or less. v2.2 grades 5 Blend pools (B 79, B 69, C 60, C 57, C 53) and marks 8 NR.
 
-**v2.2 → v2.3 (2026-11-02).** Two more blind reviews, of v2.2, found that a pool lent against with no backstop at all still reached B, that a pool one permissionless call from Frozen was marked eligible, and that a single order-book read let Orbit's grade flip within hours.
+**v2.2 → v2.3 (2026-11-02).** Two more internal reviews, of v2.2, found that a pool lent against with no backstop at all still reached B, that a pool one permissionless call from Frozen was marked eligible, and that a single order-book read let Orbit's grade flip within hours.
 
 | | v2.2 | v2.3 |
 |---|---|---|
@@ -356,11 +358,19 @@ Effect on the live table: v2.1 had 11 B's (71–75), four of them for pools hold
 
 Effect on the live table: Fixed (V2) B 69 → C 57, DeFindex's Fixed strategies B 69 → C 57, YieldBlox eligible → not eligible, Etherfuse C 60 → C 53. Fixed v2.1 is unaffected by the new rules (B 75 on 2026-11-02 06:53, after its utilization rose).
 
-**v2.3 → v2.4 (2026-11-02).** The v5 blind reviews, of v2.3 with the gate live, found that the one pool passing the gate could not pay its lenders back: Fixed v2.1 was B 74 with its USDC 95.5% borrowed against a 90% `max_util`, because utilization is one factor of seven. This breaks the v2.3 freeze for that one rule; nothing else changed.
+**v2.3 → v2.4 (2026-11-02).** The internal reviews of v2.3 with the gate live found that the one pool passing the gate could not pay its lenders back: Fixed v2.1 was B 74 with its USDC 95.5% borrowed against a 90% `max_util`, because utilization is one factor of seven. This breaks the v2.3 freeze for that one rule; nothing else changed.
 
 | | v2.3 | v2.4 |
 |---|---|---|
 | A reserve borrowed to or past its `max_util` | utilization factor 0 (weight 0.12), nothing else | **HR10**: not eligible, at most C (hard cap 64), for every reserve with ≥ $1K supplied |
 | Run archive | ratings plus a summary of each order book (level count, best ask) | every input, order books included, stored once by hash; `scripts/vigil-verify.ts` recomputes each hash, re-rates each pool and compares with the registry |
 
-Effect on the live table: Fixed v2.1 B 74 → C 64, eligible → not eligible. No pool now reaches RiskGate's default minimum of 60.
+Effect on the live table: Fixed v2.1 B 74 → C 64, eligible → not eligible. No pool reached RiskGate's default minimum of 60 at that run.
+
+**v2.4 → v2.5 (2026-11-02).** The next reviews found HR10 flipping: 40 minutes after v2.4 went live, about $3K of new USDC took Fixed v2.1's reserve from 96.1% to 89.94% borrowed, under its 90% `max_util`, and the pool was back to B 75 and eligible. Both reviewers asked for hysteresis.
+
+| | v2.4 | v2.5 |
+|---|---|---|
+| HR10 | the current read only | the current read **or any read of the last 6 h** (stored per pool and reserve, hashed, archived) |
+
+The run archive and `scripts/vigil-verify.ts` are unchanged; the stored reads are part of each archived snapshot.

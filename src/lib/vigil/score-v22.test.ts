@@ -16,7 +16,7 @@ const dust = (supplied: number) =>
 
 describe("v2.2 scoring", () => {
   it("is versioned", () => {
-    expect(ENGINE_VERSION).toMatch(/^vigil-risk-v2\.[234]\./);
+    expect(ENGINE_VERSION).toMatch(/^vigil-risk-v2\.[2345]\./);
   });
 
   it("a pool that never launched is NR: no score, no uncapped score, not eligible, and no path to a grade", () => {
