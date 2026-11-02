@@ -53,7 +53,8 @@ Melike is a Stellar Türkiye ambassador, and the application says so.
 | RiskGate (`vigil-guard`) | [`CD6BDS7R5K3IUCQSJUZUWAGLTR47EZOYEVCO5MPT7YGNBNQRHSNY5VMS`](https://stellar.expert/explorer/testnet/contract/CD6BDS7R5K3IUCQSJUZUWAGLTR47EZOYEVCO5MPT7YGNBNQRHSNY5VMS) |
 | Publisher key (can only publish) | [`GAIY6WF2F24DCGDWGWOJCBQHDMMGU6JUKT7LIGYBZ4C5VFCKTFCLJJFD`](https://stellar.expert/explorer/testnet/account/GAIY6WF2F24DCGDWGWOJCBQHDMMGU6JUKT7LIGYBZ4C5VFCKTFCLJJFD) |
 | Execution pool (stands in for the mainnet pool YieldPilot holds) | `CBI7WAUQ4NPQFZW4C3MDSVFAZJWV3RCLZSTTMA5OZ6BTPEQMOZZNSZ3Z` |
-| Latest run checked for this packet | 2026-11-02 16:02:24 UTC, engine v2.5.0, [`/api/ratings/runs?at=1793635344`](https://yieldpilot.org/api/ratings/runs?at=1793635344); txs [`1190d0f3…`](https://stellar.expert/explorer/testnet/tx/1190d0f3066866e73a14a2d8cf7306d5cb477c260e454f2e54643f5784400ec8), [`446fea45…`](https://stellar.expert/explorer/testnet/tx/446fea45771a9082ce1d5610433542b94e1b0b3e9cef60c7dce71c02d78b397b) |
+| First run that signs 0 for not-eligible pools | 2026-11-02 18:32:29 UTC, [`/api/ratings/runs?at=1793644349`](https://yieldpilot.org/api/ratings/runs?at=1793644349); txs [`4576e090…`](https://stellar.expert/explorer/testnet/tx/4576e0906c625e2e45110d4e6e20a204bbf12d08418f12cc47ab3cf154974b68), [`e8f8c772…`](https://stellar.expert/explorer/testnet/tx/e8f8c77239bf037c2f481cfaf9421565e83eeefa12d3f13a7be967c5c07472de) |
+| Run the application's figures come from | 2026-11-02 16:02:24 UTC, engine v2.5.0, [`/api/ratings/runs?at=1793635344`](https://yieldpilot.org/api/ratings/runs?at=1793635344); txs [`1190d0f3…`](https://stellar.expert/explorer/testnet/tx/1190d0f3066866e73a14a2d8cf7306d5cb477c260e454f2e54643f5784400ec8), [`446fea45…`](https://stellar.expert/explorer/testnet/tx/446fea45771a9082ce1d5610433542b94e1b0b3e9cef60c7dce71c02d78b397b) |
 
 Check any run yourself, no keys needed, from a clone of the repo:
 
@@ -78,7 +79,7 @@ Rates: Soroban $3,500 a week, full-stack $3,000 a week, infrastructure $400 a mo
 ## State on 2026-11-02 (16:02 UTC run)
 
 - 13 Blend pools (V2 + v2.1) and 4 DeFindex strategies rated: 5 pools graded, 8 not rated.
-- 4 of the 17 ratings accept deposits, all C 57: Fixed and DeFindex's three Fixed strategies. None of them reaches RiskGate's default minimum of 60, so YieldPilot holds. The registry still publishes Fixed v2.1 at 64 with no eligibility flag, so another gate at the default minimum would accept it (deliverable 1.3).
+- 4 of the 17 ratings accept deposits, all C 57: Fixed and DeFindex's three Fixed strategies. None of them reaches RiskGate's default minimum of 60, so YieldPilot holds. Since the 18:32 UTC run the registry signs 0 for every pool the engine marks not eligible (Fixed v2.1, YieldBlox, Orbit, Etherfuse and the Etherfuse strategy), so no RiskGate minimum accepts one; deliverable 1.3 replaces the 0 with an eligibility flag.
 - Fixed v2.1 is C 64 and not eligible. At 13:59 UTC its USDC was 96.1% borrowed against a 90% `max_util`, and HR10 holds for 6 h after that read, so until about 19:59 UTC if no later read reaches it.
 - Publisher: cron-job.org calls `/api/cron/publish` at :00 and :30, which has worked since 14:00 UTC.
 
