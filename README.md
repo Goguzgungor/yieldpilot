@@ -1,11 +1,11 @@
 # YieldPilot + Vigil
 
-**YieldPilot** ([yieldpilot.org](https://yieldpilot.org)) is an autonomous yield agent on Stellar. It scans Blend V2 pools and DeFindex strategies on mainnet, picks the best pool that passes its risk checks, and supplies each user's idle USDC through that user's own OpenZeppelin smart account. In those accounts the agent is only a restricted, spending-capped signer.
+**YieldPilot** ([yieldpilot.org](https://yieldpilot.org)) is an autonomous yield agent on Stellar. It scans Blend pools and DeFindex strategies on mainnet, picks the best pool that passes its own risk checks and Vigil's rating gate, and supplies each user's idle USDC through that user's own OpenZeppelin smart account. In those accounts the agent is only a restricted, spending-capped signer.
 
 **Vigil** is the risk layer underneath it, built so other wallets, vault managers and agents can use it too:
 
-- **Risk engine.** `src/lib/vigil`, with the methodology in `docs/vigil/methodology.md`. It rates every Blend V2 pool and DeFindex strategy from on-chain configuration: oracle source per collateral, backstop, status and reserves.
-- **`vigil-registry`.** A Soroban contract (`contracts/`) where publishers sign ratings and readers get a conservative M-of-N aggregate.
+- **Risk engine.** `src/lib/vigil`, with the methodology in `docs/vigil/methodology.md`. It rates every pool from Blend's V2 and v2.1 factories, and the DeFindex strategies built on them, from on-chain configuration: oracle source per collateral, SDEX depth over 24 h, backstop, status and reserves. Engine `vigil-risk-v2.3.0`, frozen for the SCF review round.
+- **`vigil-registry`.** A Soroban contract (`contracts/`) where publishers sign ratings and readers get a conservative M-of-N aggregate. Designed for several publishers; today there is one, ours, publishing hourly (`.github/workflows/vigil-publish.yml`).
 - **`vigil-guard` (RiskGate).** An OpenZeppelin smart-account policy (`contracts/`):
   - Blend calls must keep funds in the user's account.
   - Token transfers may only pay the pool.
@@ -29,7 +29,9 @@ user's Freighter G-account ── owns ──► OZ smart account (Default rule:
                                                          vigil-guard → transfer only to the pool
 ```
 
-The user signs every owner action in Freighter: deploying the wallet and adding or removing the agent's rules. The backend holds no owner key.
+The user signs every owner action in Freighter: deploying the wallet and adding or removing the agent's rules. For wallets created since 2026-11-01 the backend holds no owner key. The seven wallets created before that were backend-owned and unguarded; `scripts/migrate-legacy-accounts.ts` adds the guard and makes the user co-owner, and the backend key leaves only when the user finalizes ownership in the app.
+
+The agent applies the same rating check before it chooses (`src/lib/vigilGate.ts`): a pool without a fresh Vigil rating that is eligible and at or above the wallets' minimum (60) is not a candidate. When no pool passes, the agent holds and idle USDC stays idle.
 
 ## What is proven on testnet
 
@@ -39,7 +41,7 @@ The user signs every owner action in Freighter: deploying the wallet and adding 
 | User-owned onboarding works end-to-end through the API routes | `scripts/verify-onboarding-owner.ts` |
 | Without the guard, the agent key can withdraw a user's Blend position to another address; with the guard, that call and every other escape route are rejected | `scripts/verify-guard.ts`, results in `contracts/README.md` |
 | Legacy (backend-owned) wallets can be guarded and handed to their users | `scripts/migrate-legacy-accounts.ts`, `/api/onboard/prepare` step `finalize-ownership` |
-| Mainnet ratings can be published to the registry and read back on-chain | `scripts/vigil-publish.ts` |
+| Mainnet ratings can be published to the registry and read back on-chain | `scripts/vigil-publish.ts`, run hourly by `.github/workflows/vigil-publish.yml` (each run's input is kept as an artifact) |
 
 Live ratings for every Blend pool (the V2 and v2.1 deployments) are served at `/ratings` (page) and `/api/ratings` (JSON, cached hourly). The engine also reconstructs the YieldBlox pool as configured before the 22 Feb 2026 exploit and grades it E (`npx tsx scripts/vigil-backtest.ts`).
 
@@ -50,7 +52,7 @@ Live ratings for every Blend pool (the V2 and v2.1 deployments) are served at `/
 | Exec Blend V2 pool | `CBI7WAUQ4NPQFZW4C3MDSVFAZJWV3RCLZSTTMA5OZ6BTPEQMOZZNSZ3Z` |
 | Exec USDC (SAC) | `CD2R7WREEPGIAXZL4ASB76Y6PWTY6ZZXZ6C64AIKFDIG36YKQPNY6B2I` |
 | vigil-guard (RiskGate) | `CD6BDS7R5K3IUCQSJUZUWAGLTR47EZOYEVCO5MPT7YGNBNQRHSNY5VMS` |
-| vigil-registry | `CB4LXLCCD7YDND5FBVXPKPHUQMF7JFSDRVXHG7ZZTWWNPJ6WDCXDNDF6` (demo: 1 publisher) |
+| vigil-registry | `CB4LXLCCD7YDND5FBVXPKPHUQMF7JFSDRVXHG7ZZTWWNPJ6WDCXDNDF6` (1 publisher, `GAIY6WF2…JJFD`, hourly; admin `GANUB45L…QH3C`) |
 | OZ ed25519 verifier | `CBHJOANTAHF2ZKU5HZRZTWP4GX7YCSNR3V3AIMAH5P5R7S465SK24RSO` |
 | OZ spending-limit policy | `CBLNG63CIFKLFY6ZTL32NWMGPN7NBDSXZUSCQNTLMYRTLIZYA7MG3KAP` |
 | OZ smart-account wasm | `e2f4ed54b009c6b1c5bd848e4c73ff706c74d9436757859423f8959fa4aca28d` |

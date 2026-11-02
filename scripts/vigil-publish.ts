@@ -10,8 +10,23 @@
  * or the testnet demo registry, RPC soroban-testnet. The ratings are of MAINNET
  * pools; on the testnet registry they are a pipeline demo, keyed by the mainnet
  * pool addresses.
+ *
+ * Optional:
+ *   VIGIL_ARCHIVE=path        write the input exactly as read (with ?inputs=1 it
+ *                             carries what each reasonsHash covers)
+ *   VIGIL_EXEC_POOL_ID=C…     YieldPilot's testnet exec pool (see below)
+ *   VIGIL_POSITION_URL=https://yieldpilot.org/api/position
+ *
+ * Testnet stand-in: YieldPilot executes every deposit into one testnet pool,
+ * whatever mainnet pool it chose. With VIGIL_EXEC_POOL_ID set, that pool gets
+ * the rating of the mainnet pool YieldPilot holds (read from the position URL),
+ * so the RiskGate on the testnet wallets checks the rating the agent routed by:
+ * its score, or 0 when Vigil marks that pool not eligible. Nothing is published
+ * for it when the pool is NR or there is no position, so the gate refuses.
+ *
+ * Runs hourly from .github/workflows/vigil-publish.yml.
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { Keypair, TransactionBuilder, rpc, type Transaction } from "@stellar/stellar-sdk";
 import { RegistryClient, decodeVigilError, type RatingInput } from "../packages/vigil-sdk/src";
 
@@ -30,12 +45,33 @@ interface Rated {
   /** null for NR (not rated): nothing is published, so the guard refuses deposits. */
   score: number | null;
   grade: string;
+  eligibleForDeposit: boolean;
   reasonsHash: string;
 }
 
-async function loadRatings(): Promise<{ computedAt: number; ratings: Rated[] }> {
-  const body = source.startsWith("http") ? await (await fetch(source)).json() : JSON.parse(readFileSync(source, "utf8"));
-  return { computedAt: Number(body.computedAt), ratings: body.ratings };
+async function loadRatings(): Promise<{ engineVersion: string; computedAt: number; ratings: Rated[] }> {
+  const text = source.startsWith("http") ? await (await fetch(source)).text() : readFileSync(source, "utf8");
+  if (process.env.VIGIL_ARCHIVE) writeFileSync(process.env.VIGIL_ARCHIVE, text);
+  const body = JSON.parse(text);
+  if (!Array.isArray(body.ratings)) throw new Error(`no ratings in ${source}: ${text.slice(0, 200)}`);
+  if (body.stale) console.log("warning: the server returned its last good ratings (stale: true)");
+  return { engineVersion: String(body.engineVersion), computedAt: Number(body.computedAt), ratings: body.ratings };
+}
+
+/** The exec pool's stand-in rating (see header), or null when nothing should be published. */
+async function execMirror(ratings: Rated[], timestamp: bigint): Promise<RatingInput | null> {
+  const execPool = process.env.VIGIL_EXEC_POOL_ID;
+  const url = process.env.VIGIL_POSITION_URL;
+  if (!execPool || !url) return null;
+  const held = ((await (await fetch(url)).json()) as { poolId?: string | null }).poolId ?? null;
+  const r = held ? ratings.find((x) => x.poolId === held) : undefined;
+  if (!r || r.score === null) {
+    console.log(`exec pool ${execPool.slice(0, 6)}…: no rating published (${held ? `held pool ${held.slice(0, 6)}… is ${r ? "NR" : "unrated"}` : "no position"})`);
+    return null;
+  }
+  const score = r.eligibleForDeposit ? r.score : 0;
+  console.log(`exec pool ${execPool.slice(0, 6)}… stands in for ${r.name} ${held!.slice(0, 6)}…: ${r.grade} ${r.score}${r.eligibleForDeposit ? "" : " (not eligible ⇒ 0)"}`);
+  return { pool: execPool, score, timestamp, reasonsHash: r.reasonsHash };
 }
 
 async function send(tx: Transaction): Promise<string> {
@@ -51,10 +87,10 @@ async function send(tx: Transaction): Promise<string> {
 }
 
 async function main() {
-  const { computedAt, ratings } = await loadRatings();
+  const { engineVersion, computedAt, ratings } = await loadRatings();
   const client = new RegistryClient(REGISTRY, server, PASS, publisher.publicKey());
   console.log(`registry ${REGISTRY} · publishers ${(await client.publishers()).length} · threshold ${await client.threshold()}`);
-  console.log(`publishing ${ratings.length} ratings computed at ${new Date(computedAt * 1000).toISOString()} as ${publisher.publicKey()}`);
+  console.log(`publishing ${ratings.length} ${engineVersion} ratings computed at ${new Date(computedAt * 1000).toISOString()} as ${publisher.publicKey()}`);
 
   // The registry rejects timestamps in the future and older than its max age;
   // the engine's computedAt is mainnet chain time, which is what we sign.
@@ -66,6 +102,9 @@ async function main() {
     timestamp: BigInt(computedAt),
     reasonsHash: r.reasonsHash,
   }));
+  const mirror = await execMirror(ratings, BigInt(computedAt));
+  if (mirror) inputs.push(mirror);
+  let failed = 0;
   for (let i = 0; i < inputs.length; i += 8) {
     const chunk = inputs.slice(i, i + 8);
     const tx = new TransactionBuilder(await server.getAccount(publisher.publicKey()), { fee: "10000000", networkPassphrase: PASS })
@@ -80,6 +119,7 @@ async function main() {
       const msg = (e as Error).message;
       const v = decodeVigilError(msg);
       console.log(`  publish_batch ${i + 1}–${i + chunk.length} FAILED: ${v ? `${v.code} ${v.name}` : msg.split("\n")[0]}`);
+      failed++;
     }
   }
 
@@ -90,6 +130,11 @@ async function main() {
       `  ${r.name.slice(0, 24).padEnd(24)} ${r.poolId.slice(0, 6)}…  engine ${String(r.score ?? "NR").padStart(3)} ${r.grade}  →  registry ${agg ? `${agg.score} (${agg.publishers} publisher)` : "none"}`,
     );
   }
+  if (mirror) {
+    const agg = await client.getRating(mirror.pool);
+    console.log(`  ${"exec pool (testnet)".padEnd(24)} ${mirror.pool.slice(0, 6)}…  stand-in ${String(mirror.score).padStart(3)}    →  registry ${agg ? agg.score : "none"}`);
+  }
+  if (failed) process.exitCode = 1;
 }
 
 main().catch((e) => {

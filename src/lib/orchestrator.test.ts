@@ -42,6 +42,25 @@ describe("runTick guards", () => {
     expect(r.acted).toBe(false);
   });
 
+  it("leaves a held pool that the gate made ineligible even when the new one pays less", async () => {
+    const d = deps({
+      decide: vi.fn(async () => ({ action: "rebalance" as const, toPool: "C_A", amountUsdc: 1000_0000000n, rationale: "A is the best eligible" })),
+      getPosition: async () => ({ poolId: "C_B", amountUsdc: 1000_0000000n }),
+      gate: (scored) => scored.map((p) => (p.poolId === "C_B" ? { ...p, eligible: false, reason: "Vigil C 57 < 60, the RiskGate minimum" } : p)),
+    });
+    const r = await runTick(d);
+    expect(d.rebalance).toHaveBeenCalledWith("C_B", "C_A", 1000_0000000n);
+    expect(r.acted).toBe(true);
+    expect((d.log as ReturnType<typeof vi.fn>).mock.calls.some(([k, m]) => k === "rebalance" && /\(-80bps\): left B: Vigil C 57 < 60/.test(m))).toBe(true);
+  });
+
+  it("the gate decides eligibility: a gated-out target is not executed", async () => {
+    const d = deps({ gate: (scored) => scored.map((p) => (p.poolId === "C_B" ? { ...p, eligible: false, reason: "Vigil NR" } : p)) });
+    const r = await runTick(d);
+    expect(d.rebalance).not.toHaveBeenCalled();
+    expect(r.reason).toBe("ineligible-target");
+  });
+
   it("skips during cooldown", async () => {
     const r = await runTick(deps({ lastRebalanceAt: 99950, now: 100000, cooldownSec: 120 }));
     expect(r.acted).toBe(false);

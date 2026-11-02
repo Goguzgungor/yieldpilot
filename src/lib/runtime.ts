@@ -30,6 +30,7 @@ import {
 } from "./serialize";
 import type { Position, ScoredPool, Decision, YieldSource } from "./types";
 import { computeLiveRatings, type RatingsJson } from "./vigil/service";
+import { gateByVigil, vigilCandidatePools, type VigilVerdict } from "./vigilGate";
 
 /** Latest agent decision exposed to the UI (chosen pool + rationale + action). */
 export interface LatestDecision {
@@ -248,10 +249,19 @@ async function tick(rt: Runtime, doExecute: boolean): Promise<void> {
     // account). We still run scan+score+decide ONCE here (it caches lastScan /
     // lastDecision for the UI and yields the chosen pool).
     const noopExec = async (): Promise<TxResult> => ({ hashes: [], success: true });
+    // With a rating gate on the wallets, the agent applies the same check
+    // before choosing, so it never routes to a pool the guard would refuse.
+    const guard = rt.cfg.vigilGuard;
+    const vigil = guard.registry ? await cachedVigilVerdicts(rt, Number(guard.maxAgeSecs)) : undefined;
+    const gate = vigil === undefined ? undefined : (scored: ScoredPool[]) => gateByVigil(scored, vigil, guard.minScore);
     const r = await runTick({
       scan: async () => {
-        const poolIds = rt.poolIds && rt.poolIds.length ? rt.poolIds : rt.cfg.scanBlendPoolIds;
+        const discovered = rt.poolIds && rt.poolIds.length ? rt.poolIds : rt.cfg.scanBlendPoolIds;
+        const poolIds = [...new Set([...discovered, ...vigilCandidatePools(vigil ?? null, guard.minScore)])];
         const s = await scanSource(rt.blendSource, poolIds);
+        // Vigil's names tell the two Fixed pools (V2, v2.1) apart.
+        const names = new Map((vigil ?? []).map((v) => [v.poolId, v.name]));
+        for (const p of s) p.name = names.get(p.poolId) ?? p.name;
         if (rt.defindexSource) {
           const dfx = await scanSource(
             rt.defindexSource,
@@ -261,7 +271,7 @@ async function tick(rt: Runtime, doExecute: boolean): Promise<void> {
         }
         // Cache the SCORED pools (deterministic; matches what runTick scores
         // internally) so the UI gets riskScore/eligible/reason without a re-scan.
-        rt.lastScan = scorePools(s, rt.cfg.tolerance);
+        rt.lastScan = gate ? gate(scorePools(s, rt.cfg.tolerance)) : scorePools(s, rt.cfg.tolerance);
         // Persist to Mongo so route handlers (separate serverless invocations)
         // read the latest snapshot regardless of which one writes vs. reads.
         const scanAt = Date.now();
@@ -270,6 +280,7 @@ async function tick(rt: Runtime, doExecute: boolean): Promise<void> {
         return s;
       },
       tolerance: rt.cfg.tolerance,
+      gate,
       getPosition: () => rt.db.getPosition(),
       // Wrap `decide` so the chosen pool + rationale are captured for the UI.
       decide: async (ctx) => {
@@ -308,7 +319,13 @@ async function tick(rt: Runtime, doExecute: boolean): Promise<void> {
     // The decision was made ONCE above; now supply each registered user's idle
     // USDC into the chosen exec pool via THEIR smart account. Only on executing
     // ticks (the daily Cron) — the lazy/manual scan refresh passes doExecute=false.
-    if (perUser && doExecute) {
+    // Nothing eligible (e.g. every pool under the Vigil minimum): idle USDC stays
+    // idle; supplying it would add to a position the agent can no longer route to.
+    const routeOpen = !!bestPool(rt.lastScan);
+    if (perUser && doExecute && !routeOpen) {
+      await rt.db.log("peruser", "no eligible pool: idle USDC is not supplied this tick");
+    }
+    if (perUser && doExecute && routeOpen) {
       const chosenPoolId = rt.lastDecision?.chosenPoolId ?? null;
       const result = await runPerUserExecution(
         {
@@ -655,6 +672,21 @@ export async function getDecision(): Promise<LatestDecision> {
 
 // ── Vigil ratings ──────────────────────────────────────────────────────────
 
+/**
+ * The cached Vigil ratings, if computed within `maxAgeSec` (the guard's own
+ * max age), else null. Never recomputes: the tick has 60 s and a run takes ~90 s;
+ * the hourly publisher keeps the cache fresh through /api/ratings?refresh=1.
+ */
+async function cachedVigilVerdicts(rt: Runtime, maxAgeSec: number): Promise<VigilVerdict[] | null> {
+  const [raw, atRaw] = await Promise.all([rt.db.getKV("vigilRatings"), rt.db.getKV("vigilRatingsAt")]);
+  if (!raw || !atRaw || Date.now() - Number(atRaw) > maxAgeSec * 1000) return null;
+  try {
+    return (JSON.parse(raw) as RatingsJson).ratings;
+  } catch {
+    return null;
+  }
+}
+
 /** Ratings older than this are recomputed on the next read. */
 const RATINGS_TTL_MS = 60 * 60 * 1000;
 let ratingsInFlight: Promise<RatingsJson> | null = null;
@@ -695,6 +727,10 @@ export async function getRatings(opts: { refresh?: boolean } = {}): Promise<Cach
     passphrase: rt.cfg.scanNetworkPassphrase,
     deployments: rt.cfg.scanBlendDeployments,
     curatedPoolIds: rt.cfg.scanBlendPoolIds,
+    depthHistory: {
+      load: async () => JSON.parse((await rt.db.getKV("vigilDepthHistory")) ?? "{}"),
+      save: (h) => rt.db.setKV("vigilDepthHistory", JSON.stringify(h)),
+    },
     defindexStrategies: rt.cfg.scanDefindexStrategies.map((s) => ({
       strategyId: s.strategyId,
       name: s.name,

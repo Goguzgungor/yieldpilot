@@ -46,6 +46,14 @@ describe("decide (deterministic, no LLM)", () => {
     expect(d.rationale).toContain("conservative");
   });
 
+  it("when nothing is eligible, names the highest-yield pool and why it is out", () => {
+    const gated = { ...yieldblox, eligible: false, reason: "Vigil C 57 < 60, the RiskGate minimum" };
+    const d = decide({ pools: [gated], position: idle, tolerance: "balanced" });
+    expect(d.rationale).toMatch(/Vigil rating gate/);
+    expect(d.rationale).toContain(`${gated.name} (`);
+    expect(d.rationale).toMatch(/excluded: Vigil C 57 < 60/);
+  });
+
   it("explains the choice with the numbers and the best excluded alternative", () => {
     const d = decide({ pools, position: idle, tolerance: "balanced" });
     expect(d.rationale).toContain("Fixed");

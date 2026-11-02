@@ -1,0 +1,46 @@
+# Hourly Vigil publisher (1-of-1 today): refreshes the live ratings on
+# yieldpilot.org and signs them into the testnet RiskRegistry, so get_rating
+# stays fresh (the registry and the RiskGate reject ratings older than 2 h).
+# The key is a testnet-only publisher key held as a repository secret; it can
+# only publish ratings, not move funds. Each run's input, with the per-pool data
+# every reasonsHash covers, is kept as an artifact for 90 days.
+name: vigil-publish
+
+on:
+  schedule:
+    - cron: "7 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vigil-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Publish ratings
+        env:
+          PUBLISHER_SECRET: ${{ secrets.VIGIL_PUBLISHER_SECRET }}
+          VIGIL_REGISTRY_ID: CB4LXLCCD7YDND5FBVXPKPHUQMF7JFSDRVXHG7ZZTWWNPJ6WDCXDNDF6
+          VIGIL_EXEC_POOL_ID: CBI7WAUQ4NPQFZW4C3MDSVFAZJWV3RCLZSTTMA5OZ6BTPEQMOZZNSZ3Z
+          VIGIL_POSITION_URL: https://yieldpilot.org/api/position
+          VIGIL_ARCHIVE: ratings.json
+        run: npx tsx scripts/vigil-publish.ts "https://yieldpilot.org/api/ratings?refresh=1&inputs=1"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ratings-${{ github.run_id }}
+          path: ratings.json
+          if-no-files-found: ignore
+          retention-days: 90

@@ -68,11 +68,13 @@ const Schema = z.object({
   // only, and limits USDC transfers to the pool. Always on (it closes the
   // "agent withdraws to any address" hole).
   VIGIL_GUARD_ID: z.string().min(1).default("CD6BDS7R5K3IUCQSJUZUWAGLTR47EZOYEVCO5MPT7YGNBNQRHSNY5VMS"),
-  // OPTIONAL rating gate: when set, deposits additionally need a fresh rating
-  // >= VIGIL_MIN_SCORE from this registry (withdrawals are never gated). Leave
-  // unset unless a publisher keeps the exec pool's rating fresh, or deposits
-  // fail closed.
-  VIGIL_REGISTRY_ID: z.string().min(1).optional(),
+  // Rating gate: deposits additionally need a fresh rating >= VIGIL_MIN_SCORE
+  // from this registry (withdrawals are never gated), on new wallets and in
+  // the agent's own choice (vigilGate.ts). On by default since 2026-11-02, when
+  // the hourly publisher (.github/workflows/vigil-publish.yml) started keeping
+  // the ratings, and the exec pool's stand-in rating, fresh; without it
+  // deposits fail closed. "off" disables the gate.
+  VIGIL_REGISTRY_ID: z.string().min(1).default("CB4LXLCCD7YDND5FBVXPKPHUQMF7JFSDRVXHG7ZZTWWNPJ6WDCXDNDF6"),
   VIGIL_MIN_SCORE: z.coerce.number().int().min(0).max(100).default(60),
   VIGIL_MAX_AGE_SEC: z.coerce.number().int().positive().default(7200),
 
@@ -156,7 +158,7 @@ export function parseConfig(env: Record<string, string | undefined>) {
     // Vigil RiskGate
     vigilGuard: {
       id: e.VIGIL_GUARD_ID,
-      registry: e.VIGIL_REGISTRY_ID,
+      registry: e.VIGIL_REGISTRY_ID === "off" ? undefined : e.VIGIL_REGISTRY_ID,
       minScore: e.VIGIL_MIN_SCORE,
       maxAgeSecs: BigInt(e.VIGIL_MAX_AGE_SEC),
     },

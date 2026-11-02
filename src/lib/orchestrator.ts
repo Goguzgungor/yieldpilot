@@ -1,9 +1,11 @@
 import { scorePools, bestPool } from "./risk";
-import type { PoolYield, Position, Decision, TxResult, RiskTolerance, UserRegistration } from "./types";
+import type { PoolYield, Position, Decision, TxResult, RiskTolerance, ScoredPool, UserRegistration } from "./types";
 
 export interface TickDeps {
   scan: () => Promise<PoolYield[]>;
   tolerance: RiskTolerance;
+  /** Extra eligibility applied after scoring (the Vigil RiskGate check, see vigilGate.ts). */
+  gate?: (scored: ScoredPool[]) => ScoredPool[];
   getPosition: () => Promise<Position>;
   decide: (ctx: { pools: any; position: Position; tolerance: RiskTolerance }) => Promise<Decision>;
   rebalance: (from: string, to: string, amount: bigint) => Promise<TxResult>;
@@ -18,7 +20,7 @@ export interface TickDeps {
 
 export async function runTick(d: TickDeps): Promise<{ acted: boolean; reason: string }> {
   const raw = await d.scan();
-  const scored = scorePools(raw, d.tolerance);
+  const scored = d.gate ? d.gate(scorePools(raw, d.tolerance)) : scorePools(raw, d.tolerance);
   await d.log("scan", `scanned ${raw.length} pools, ${scored.filter((p) => p.eligible).length} eligible`);
 
   const pos = await d.getPosition();
@@ -35,7 +37,10 @@ export async function runTick(d: TickDeps): Promise<{ acted: boolean; reason: st
   const best = bestPool(scored);
   if (!target || !target.eligible) { await d.log("skip", "target not eligible"); return { acted: false, reason: "ineligible-target" }; }
   const deltaBps = target.apyBps - (current?.apyBps ?? 0);
-  if (deltaBps < d.minYieldDeltaBps) { await d.log("skip", `delta ${deltaBps}bps < ${d.minYieldDeltaBps}`); return { acted: false, reason: "below-delta" }; }
+  // Leaving a pool that is no longer eligible (e.g. its Vigil rating fell under
+  // the RiskGate minimum) is a risk move, not a yield move: no minimum delta.
+  const leavingIneligible = !!current && !current.eligible;
+  if (!leavingIneligible && deltaBps < d.minYieldDeltaBps) { await d.log("skip", `delta ${deltaBps}bps < ${d.minYieldDeltaBps}`); return { acted: false, reason: "below-delta" }; }
   if (best && target.poolId !== best.poolId) { await d.log("skip", "target not the best eligible"); return { acted: false, reason: "not-best" }; }
 
   let amount = decision.amountUsdc ?? pos.amountUsdc;
@@ -51,7 +56,8 @@ export async function runTick(d: TickDeps): Promise<{ acted: boolean; reason: st
   await d.recordRebalance(amount);
   await d.commitPosition({ poolId: target.poolId, amountUsdc: amount });
   const verb = pos.poolId ? `moved ${pos.poolId}->${target.poolId}` : `deposited idle -> ${target.poolId}`;
-  await d.log("rebalance", `${verb} ${amount} stroops (+${deltaBps}bps): ${decision.rationale}`, { hashes: res.hashes });
+  const why = leavingIneligible ? `left ${current!.name}: ${current!.reason ?? "not eligible"}; ` : "";
+  await d.log("rebalance", `${verb} ${amount} stroops (${deltaBps >= 0 ? "+" : ""}${deltaBps}bps): ${why}${decision.rationale}`, { hashes: res.hashes });
   return { acted: true, reason: pos.poolId ? "rebalanced" : "deposited" };
 }
 

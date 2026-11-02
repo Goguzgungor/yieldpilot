@@ -26,6 +26,15 @@ describe("parseConfig", () => {
     expect(c.minYieldDeltaBps).toBe(50);
   });
 
+  it("turns the rating gate on by default (testnet registry, min 60, 2 h) and off with VIGIL_REGISTRY_ID=off", () => {
+    expect(parseConfig(env).vigilGuard).toMatchObject({
+      registry: "CB4LXLCCD7YDND5FBVXPKPHUQMF7JFSDRVXHG7ZZTWWNPJ6WDCXDNDF6",
+      minScore: 60,
+      maxAgeSecs: 7200n,
+    });
+    expect(parseConfig({ ...env, VIGIL_REGISTRY_ID: "off" }).vigilGuard.registry).toBeUndefined();
+  });
+
   it("defaults the on-chain discovery contract ids (mainnet) when env omits them", () => {
     const c = parseConfig(env);
     expect(c.scanPoolFactoryId).toBe("CDSYOAVXFY7SM5S64IZPPPYB4GVGGLMQVFREPSQQEZVIWXX5R23G4QSU");

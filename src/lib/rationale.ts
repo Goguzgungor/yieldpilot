@@ -35,6 +35,15 @@ export function explainRoute(best: RationalePool, pools: RationalePool[], holdin
   return `${lead} ${skipped.name} pays ${pct(skipped.apyBps)} but is excluded: ${skipped.reason ?? "not eligible"}.`;
 }
 
+/** Why nothing is routed: the highest-APY pool and the reason it is out. */
+export function explainNoRoute(pools: RationalePool[], tolerance: string): string {
+  const lead = `No pool is eligible under the ${tolerance} risk tolerance and the Vigil rating gate, so the agent holds.`;
+  const out = pools.filter((p) => !p.eligible);
+  if (!out.length) return lead;
+  const top = out.reduce((a, b) => (b.apyBps > a.apyBps ? b : a));
+  return `${lead} The highest-yield one, ${top.name} (${pct(top.apyBps)}), is excluded: ${top.reason ?? "not eligible"}.`;
+}
+
 /** The route's rationale for a scan, or null when nothing is eligible. */
 export function routeRationale(pools: RationalePool[]): string | null {
   const best = bestEligible(pools);

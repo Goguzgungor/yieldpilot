@@ -1,5 +1,5 @@
 import { bestPool } from "./risk";
-import { explainRoute } from "./rationale";
+import { explainNoRoute, explainRoute } from "./rationale";
 import type { ScoredPool, Position, Decision, RiskTolerance } from "./types";
 
 // The agent's decision is deterministic: the highest-APY pool among those the
@@ -13,7 +13,7 @@ export interface DecisionContext { pools: ScoredPool[]; position: Position; tole
 export function decide(ctx: DecisionContext): Decision {
   const best = bestPool(ctx.pools);
   if (!best) {
-    return { action: "hold", rationale: `No pool is eligible under the ${ctx.tolerance} risk tolerance, so the agent holds.` };
+    return { action: "hold", rationale: explainNoRoute(ctx.pools, ctx.tolerance) };
   }
   if (ctx.position.poolId === best.poolId) {
     return { action: "hold", rationale: explainRoute(best, ctx.pools, true) };

@@ -74,6 +74,7 @@ Layer map:
 - **`discovery.ts`** — enumerate active Blend pools (backstop reward zone = authoritative; factory `deploy` events = best-effort), with `SCAN_BLEND_POOL_IDS` as fallback; result cached in the DB KV with a 60-min TTL.
 - **`scanner.ts`** — `BlendReader` reads a pool's USDC reserve (APY/TVL/utilization/oracle staleness) via `@blend-capital/blend-sdk` `PoolV2`. `defindex.ts` reads a strategy's underlying Blend reserve (multi-asset USDC/EURC/XLM).
 - **`risk.ts`** — `scorePools` (utilization + TVL → 0..100 risk) and `bestPool`; eligibility gated by `RISK_TOLERANCE`.
+- **`vigilGate.ts`** — when `VIGIL_REGISTRY_ID` is set (the wallets' RiskGate checks that registry), the tick excludes every pool without a fresh, eligible Vigil rating ≥ `VIGIL_MIN_SCORE`, read from the cached ratings (the tick never recomputes them; the hourly publisher refreshes the cache via `/api/ratings?refresh=1`). Vigil-rated v2.1 pools are added to the scan.
 - **`agent.ts`** — deterministic `decide`: rebalance to `bestPool` unless already there (hold), with a rationale naming the choice and the best higher-yield pool it excluded.
 - **`orchestrator.ts`** — pure decision logic + guard rails (`runTick`), and the per-user supply loop (`runPerUserExecution`). Dependency-injected (no SDK imports) so it's unit-testable.
 - **`executor.ts` / `wallet.ts` / `smartAccount.ts`** — execution. See below.
