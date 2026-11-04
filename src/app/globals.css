@@ -132,6 +132,7 @@ input { font: inherit; color: inherit; }
 .metrics { display: grid; grid-template-columns: repeat(4, auto); justify-content: start; column-gap: 40px; }
 .metrics dt { font: 400 10px/1 var(--mono); letter-spacing: 0.15em; text-transform: uppercase; color: var(--dim); }
 .metrics dd { margin-top: 10px; font-family: var(--display); font-size: 24px; letter-spacing: -0.02em; color: var(--ink-hi); font-variant-numeric: tabular-nums; }
+.metrics dd small { display: block; margin-top: 6px; font: 400 10px/1 var(--mono); letter-spacing: 0.1em; color: var(--dim); white-space: nowrap; }
 .ruler { position: relative; margin: 34px 0 0; height: 30px; max-width: 460px; }
 .ruler::before { content: ""; position: absolute; left: 0; right: 0; top: 10px; border-top: 1px solid var(--hair); }
 .ruler .t { position: absolute; top: 6px; width: 1px; height: 9px; background: var(--hair); }
@@ -223,6 +224,14 @@ input { font: inherit; color: inherit; }
   .ledger { display: none; }
   .metrics { column-gap: 26px; }
   .rule span:last-child { display: none; }
+}
+
+/* phone: four metrics no longer fit one row; two rows must still fit the reading band */
+@media (max-width: 520px) {
+  .metrics { grid-template-columns: repeat(2, auto); row-gap: 12px; }
+  .metrics dd { margin-top: 6px; font-size: 20px; }
+  .ruler { margin-top: 24px; }
+  .links span { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

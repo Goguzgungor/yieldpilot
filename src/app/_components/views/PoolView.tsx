@@ -4,6 +4,7 @@ import type { ApiScoredPool } from "../types";
 import { formatApy, formatPct, truncateAddress } from "../format";
 import { blendPoolUrl, stellarExpertUrl } from "../links";
 import { poolTitle, protocolLabel, tvlCompact } from "../poolNames";
+import { freeLiquidityStroops } from "../../../lib/risk";
 
 /** A summit, read like a survey entry: what it pays, how risky it is, and why the agent does or doesn't go there. */
 export default function PoolView({ pool, route, holding, riskCap, rationale, onBack }: {
@@ -46,7 +47,13 @@ export default function PoolView({ pool, route, holding, riskCap, rationale, onB
       <div>
         <dl className="metrics">
           <div><dt>TVL</dt><dd>{tvlCompact(pool.tvlUsdc)}</dd></div>
-          <div><dt>Utilization</dt><dd>{formatPct(pool.utilizationBps)}</dd></div>
+          <div>
+            <dt>Utilization</dt>
+            <dd>
+              {formatPct(pool.utilizationBps)}
+              <small>{tvlCompact(freeLiquidityStroops(BigInt(pool.tvlUsdc), pool.utilizationBps).toString())} withdrawable</small>
+            </dd>
+          </div>
           <div><dt>Oracle</dt><dd>{pool.oracleHealthy ? "Healthy" : "Flagged"}</dd></div>
           <div><dt>Risk</dt><dd>{pool.riskScore} / 100</dd></div>
         </dl>
