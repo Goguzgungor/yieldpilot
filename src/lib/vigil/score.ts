@@ -21,20 +21,23 @@ import {
   type DexDepthSample,
 } from "./types";
 
-export const ENGINE_VERSION = "vigil-risk-v2.5.0";
+export const ENGINE_VERSION = "vigil-risk-v2.6.0";
 
 /**
  * Factor weights (sum = 1). v2.1 dropped the pool_status factor: Blend's
  * On_Ice / Frozen status is its reaction to the backstop and withdrawal queue,
  * which backstop_coverage already measures. Status is reported next to the
  * grade and decides whether deposits are possible (HR1), not the grade itself.
+ * v2.6 moved 0.12 from backstop_coverage to utilization (now liquidity, read
+ * in dollars as well as a ratio): no Blend pool holding real deposits has a
+ * funded backstop, so the factor no longer told pools apart.
  */
 export const WEIGHTS = {
   oracle_source: 0.18,
   oracle_freshness: 0.12,
   sdex_manipulation: 0.23,
-  backstop_coverage: 0.18,
-  utilization: 0.12,
+  backstop_coverage: 0.06,
+  utilization: 0.24,
   supply_caps: 0.12,
   collateral_concentration: 0.05,
 } as const;
@@ -50,7 +53,8 @@ export const WEIGHT_RATIONALE: Record<FactorKey, string> = {
     "The one failure mode that has actually drained a Blend pool on Stellar: SDEX-priced collateral cheap to pump relative to what it can borrow.",
   backstop_coverage:
     "The backstop is the first-loss capital that absorbs bad debt before lenders do.",
-  utilization: "High utilization means lenders may not be able to withdraw and bad debt hits a larger share of supply.",
+  utilization:
+    "Lenders can withdraw only what is not lent out: a reserve is liquid when most of it is unlent or when a large dollar amount is, however high its utilization.",
   supply_caps: "Caps bound how much borrow power a weakly-priced collateral can create.",
   collateral_concentration: "Collateral concentrated in one asset concentrates tail risk; kept small to avoid double-counting oracle factors.",
 };
@@ -96,8 +100,8 @@ export const GRADE_BANDS: ReadonlyArray<readonly [number, Grade]> = [
 export const HARD_CAPS = {
   /** backstop below Blend's threshold, or ≥30% of it queued to leave ⇒ grade ≤ B */
   uninsured: 79,
-  /** borrowed against with under THRESHOLDS.minFirstLossCoverage of first-loss capital ⇒ grade ≤ C */
-  noFirstLossCapital: 64,
+  /** borrowed against with under THRESHOLDS.minFirstLossCoverage of first-loss capital ⇒ grade ≤ B (≤ C before v2.6) */
+  noFirstLossCapital: 79,
   /** collateral with stale/missing price ⇒ grade ≤ D */
   collateralPriceUnavailable: 49,
   /** SDEX-priced collateral with a profitable manipulation (rho < 1) ⇒ grade E */
@@ -106,7 +110,7 @@ export const HARD_CAPS = {
   unverifiableCollateralSource: 64,
   /** any collateral priced below THRESHOLDS.robustSourceQuality ⇒ grade ≤ B (an A needs robust feeds) */
   weakCollateralSource: 79,
-  /** a reserve borrowed to or past its own max_util, so its lenders can withdraw only what is not borrowed ⇒ grade ≤ C, not eligible */
+  /** a reserve borrowed to or past its own max_util with under THRESHOLDS.lockedInMinWithdrawableUsd withdrawable ⇒ grade ≤ C, not eligible */
   lendersLockedIn: 64,
 } as const;
 
@@ -119,6 +123,15 @@ export const THRESHOLDS = {
   blendMaxPriceAgeSec: 86_400,
   utilizationFull: 0.6,
   utilizationZero: 0.95,
+  /**
+   * Withdrawable USD (supplied − borrowed) of a reserve at which its depth
+   * scores 0 and 100, log-linear between (v2.6). A reserve's liquidity is the
+   * better of its ratio and its depth score.
+   */
+  liquidityZeroUsd: 10_000,
+  liquidityFullUsd: 1_000_000,
+  /** HR10 holds only while less than this much of the reserve can be withdrawn (v2.6). */
+  lockedInMinWithdrawableUsd: 1_000_000,
   /** Effective backstop / liabilities giving full marks. */
   backstopFullCoverage: 0.1,
   /**
@@ -411,20 +424,28 @@ export function utilizationFactor(d: Derived[]): FactorCalc {
   const bor = d.reduce((a, x) => a + x.borrowedUsd, 0);
   if (sup <= 0) return { value: 100, raw: 0, note: "no supply" };
   const pool = bor / sup;
-  let maxU = 0;
-  let maxSym = "";
+  const { utilizationFull: lo, utilizationZero: hi, liquidityZeroUsd: zero, liquidityFullUsd: full } = THRESHOLDS;
+  let worst: { value: number; u: number; free: number; sym: string } | null = null;
   for (const x of d) {
     if (x.suppliedUsd < THRESHOLDS.minLiquidityUsd) continue;
-    const ru = x.r.supplied > 0 ? x.r.borrowed / x.r.supplied : 0;
-    if (ru > maxU) {
-      maxU = ru;
-      maxSym = x.r.symbol;
-    }
+    const u = x.r.supplied > 0 ? x.r.borrowed / x.r.supplied : 0;
+    const free = withdrawableUsd(x);
+    const ratio = u <= lo ? 100 : u >= hi ? 0 : (100 * (hi - u)) / (hi - lo);
+    const depth = free <= zero ? 0 : free >= full ? 100 : (100 * Math.log10(free / zero)) / Math.log10(full / zero);
+    const value = Math.max(ratio, depth);
+    if (!worst || value < worst.value || (value === worst.value && u > worst.u)) worst = { value, u, free, sym: x.r.symbol };
   }
-  if (!maxSym) return { value: 100, raw: 0, note: `no reserve with ${fmtUsd(THRESHOLDS.minLiquidityUsd)}+ supplied (pool utilization ${pct(pool)})` };
-  const { utilizationFull: lo, utilizationZero: hi } = THRESHOLDS;
-  const value = maxU <= lo ? 100 : maxU >= hi ? 0 : (100 * (hi - maxU)) / (hi - lo);
-  return { value, raw: maxU, note: `most-borrowed reserve ${maxSym} ${pct(maxU)} (pool-wide ${pct(pool)})` };
+  if (!worst) return { value: 100, raw: 0, note: `no reserve with ${fmtUsd(THRESHOLDS.minLiquidityUsd)}+ supplied (pool utilization ${pct(pool)})` };
+  return {
+    value: worst.value,
+    raw: worst.u,
+    note: `weakest reserve ${worst.sym} ${pct(worst.u)} borrowed, ${fmtUsd(worst.free)} withdrawable (pool-wide ${pct(pool)})`,
+  };
+}
+
+/** What a reserve's lenders can take out now: supplied − borrowed, in USD. */
+export function withdrawableUsd(x: Derived): number {
+  return Math.max(0, x.suppliedUsd - x.borrowedUsd);
 }
 
 /**
@@ -467,16 +488,15 @@ export function concentrationFactor(d: Derived[]): FactorCalc {
 
 // ── main entry ───────────────────────────────────────────────────────────────
 
-/** The B and C bands' floors: a soft ceiling only compresses the part of a score above its floor. */
+/** The B band's floor: a soft ceiling only compresses the part of a score above its floor. */
 const B_FLOOR = 65;
-const C_FLOOR = 50;
 
 /**
  * The soft "at most B" ceiling used for uninsured pools (HR7) and weak price
  * feeds (HR6): scores above 65 are compressed linearly into 65..79, so the
  * grade tops out at B while pools keep their order (a hard min(score, 79)
- * would flatten every such pool to the same number). HR9's "at most C" is the
- * same with floor 50 and cap 64.
+ * would flatten every such pool to the same number). HR9 (no first-loss
+ * capital) shares it since v2.6; before, it compressed 50+ into 50..64.
  */
 export function softCeiling(score: number, cap: number = HARD_CAPS.uninsured, floor: number = B_FLOOR): number {
   if (score <= floor) return score;
@@ -524,7 +544,9 @@ export function pendingFreeze(s: PoolSnapshot): string | null {
 /**
  * Why lenders cannot get out (HR10), or null: a reserve with material supply is
  * borrowed to or past its own max_util now, or was in any read of the last
- * THRESHOLDS.lockWindowSec (v2.5). Blend lends no more of it there, and its
+ * THRESHOLDS.lockWindowSec (v2.5), with less than
+ * THRESHOLDS.lockedInMinWithdrawableUsd withdrawable at that read (v2.6: a
+ * $150M reserve 99% borrowed still lets $1.5M out). Blend lends no more of it there, and its
  * lenders can withdraw only what is not borrowed until borrowers repay. A
  * reserve without a price is left out (its supply cannot be measured; HR2
  * already applies).
@@ -537,7 +559,8 @@ export function lendersLockedIn(s: PoolSnapshot, d: Derived[]): string | null {
     if (!x.priced || r.maxUtil <= 0) continue;
     const u = r.supplied > 0 ? r.borrowed / r.supplied : 0;
     const free = `${fmtUsd(x.suppliedUsd - x.borrowedUsd)} of ${fmtUsd(x.suppliedUsd)} can be withdrawn`;
-    if (x.suppliedUsd >= THRESHOLDS.minLiquidityUsd && u >= r.maxUtil) {
+    // A reserve with lockedInMinWithdrawableUsd or more withdrawable is not locked, whatever its ratio (v2.6).
+    if (x.suppliedUsd >= THRESHOLDS.minLiquidityUsd && u >= r.maxUtil && withdrawableUsd(x) < THRESHOLDS.lockedInMinWithdrawableUsd) {
       out.push(`${r.symbol} is ${pct(u)} borrowed, ${u > r.maxUtil ? "past" : "at"} its ${pct(r.maxUtil)} max_util: ${free}`);
       continue;
     }
@@ -547,6 +570,7 @@ export function lendersLockedIn(s: PoolSnapshot, d: Derived[]): string | null {
         h.sampledAt < now &&
         h.maxUtil > 0 &&
         h.supplied * (h.priceUsd ?? 0) >= THRESHOLDS.minLiquidityUsd &&
+        (h.supplied - h.borrowed) * (h.priceUsd ?? 0) < THRESHOLDS.lockedInMinWithdrawableUsd &&
         h.borrowed / h.supplied >= h.maxUtil,
     );
     if (!locked.length) continue;
@@ -629,21 +653,20 @@ export function ratePool(s: PoolSnapshot, opts: RateOptions = {}): PoolRating {
     score = Math.min(score, HARD_CAPS.lendersLockedIn);
     hardRules.push(`HR10 ${locked} ⇒ not eligible, grade ≤ C`);
   }
-  // HR6 / HR7 share one soft ceiling, applied once even when both hold. HR9
-  // is the stricter one (at most C) and says what HR7 would about the backstop.
+  // HR6 / HR7 / HR9 share one soft ceiling, applied once even when several
+  // hold. HR9 (at most C until v2.6) says what HR7 would about the backstop,
+  // more precisely, and replaces it.
   const noFirstLoss = firstLossShortfall(s, d);
   const uninsured = noFirstLoss ? null : backstopUnreliable(s);
   const weakColl = weakCollateral(d, manip);
-  const weakRule = () =>
-    `HR6 collateral priced by a weak source (${weakColl.map((x) => `${x.r.symbol} ← ${x.r.source.kind}`).join(", ")}) ⇒ at most B (65+ compressed into 65–79)`;
-  if (noFirstLoss && score > C_FLOOR) {
-    score = softCeiling(score, HARD_CAPS.noFirstLossCapital, C_FLOOR);
-    hardRules.push(`HR9 ${noFirstLoss} ⇒ at most C (50+ compressed into 50–64)`);
-    if (weakColl.length) hardRules.push(weakRule());
-  } else if ((uninsured || weakColl.length) && score > B_FLOOR) {
+  if ((noFirstLoss || uninsured || weakColl.length) && score > B_FLOOR) {
     score = softCeiling(score);
+    if (noFirstLoss) hardRules.push(`HR9 ${noFirstLoss} ⇒ at most B (65+ compressed into 65–79)`);
     if (uninsured) hardRules.push(`HR7 ${uninsured} ⇒ at most B (65+ compressed into 65–79)`);
-    if (weakColl.length) hardRules.push(weakRule());
+    if (weakColl.length)
+      hardRules.push(
+        `HR6 collateral priced by a weak source (${weakColl.map((x) => `${x.r.symbol} ← ${x.r.source.kind}`).join(", ")}) ⇒ at most B (65+ compressed into 65–79)`,
+      );
   }
   score = Math.round(clamp(score));
   if (score < 50 && eligible) {

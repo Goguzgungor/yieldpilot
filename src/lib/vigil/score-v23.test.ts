@@ -13,16 +13,16 @@ const empty = backstop({ usdc: 0, blnd: 0, meetsThreshold: false });
 
 describe("v2.3 scoring", () => {
   it("is versioned", () => {
-    expect(ENGINE_VERSION).toMatch(/^vigil-risk-v2\.[345]\./);
+    expect(ENGINE_VERSION).toMatch(/^vigil-risk-v2\.[3456]\./);
   });
 });
 
 describe("v2.3 HR9: no first-loss capital", () => {
-  it("a pool with material borrows and an empty backstop is at most C, still eligible at 50+, with HR7 folded into HR9", () => {
+  it("a pool with material borrows and an empty backstop is capped (at most B since v2.6, C before), still eligible, with HR7 folded into HR9", () => {
     const r = ratePool(healthyPool({ poolId: cid("fixed-v2-like"), status: 3, backstop: empty }));
-    expect(r.grade).toBe("C");
+    expect(r.grade).toBe("B");
     expect(r.score).toBeLessThanOrEqual(HARD_CAPS.noFirstLossCapital);
-    expect(r.score).toBe(Math.round(softCeiling(r.uncappedScore!, HARD_CAPS.noFirstLossCapital, 50)));
+    expect(r.score).toBe(Math.round(softCeiling(r.uncappedScore!)));
     expect(r.hardRules.find((h) => h.startsWith("HR9"))).toMatch(/covers 0\.0% of .* borrowed, under 1\.0%/);
     expect(r.hardRules.some((h) => h.startsWith("HR7"))).toBe(false);
     expect(r.eligibleForDeposit).toBe(true);
@@ -69,10 +69,10 @@ describe("v2.3 HR9: no first-loss capital", () => {
     expect(r.hardRules.some((h) => h.startsWith("HR9"))).toBe(false);
   });
 
-  it("the path out of C is the backstop", () => {
+  it("the path out of the HR9 ceiling is the backstop", () => {
     const p = pathsToGrades(healthyPool({ poolId: cid("fixed-path"), status: 3, backstop: empty }));
-    expect(p.B).toMatchObject({ reachable: true, levers: ["backstop"] });
-    expect(p.B.steps[0]).toMatch(/Refill the backstop/);
+    expect(p.A).toMatchObject({ reachable: true, levers: ["backstop"] });
+    expect(p.A.steps[0]).toMatch(/Refill the backstop/);
   });
 
   it("an NR pool does not list HR9", () => {

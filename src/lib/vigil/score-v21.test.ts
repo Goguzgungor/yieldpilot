@@ -12,7 +12,7 @@ const uninsured = backstop({ usdc: 50_000, blnd: 100_000, meetsThreshold: false 
 
 describe("v2.1 scoring", () => {
   it("weights still sum to 1, with no pool_status factor", () => {
-    expect(ENGINE_VERSION).toMatch(/^vigil-risk-v2\.[12345]\./);
+    expect(ENGINE_VERSION).toMatch(/^vigil-risk-v2\.[123456]\./);
     expect("pool_status" in WEIGHTS).toBe(false);
     expect(Object.values(WEIGHTS).reduce((a, b) => a + b, 0)).toBeCloseTo(1, 10);
   });

@@ -84,7 +84,7 @@ const FACTOR_LABELS: Record<string, string> = {
   oracle_freshness: "Price freshness",
   sdex_manipulation: "Price manipulation cost",
   backstop_coverage: "Backstop cover",
-  utilization: "Utilization",
+  utilization: "Liquidity",
   collateral_concentration: "Collateral concentration",
   supply_caps: "Supply caps",
   underlying_pool: "Underlying pool",
@@ -132,7 +132,7 @@ const RULES: Array<{ code: string; text: (rule: string) => string }> = [
   },
   {
     code: "HR9",
-    text: () => "Lent against with no first-loss capital: the backstop covers under 1% of the borrows, so at most C",
+    text: () => "Lent against with no first-loss capital: the backstop covers under 1% of the borrows, so at most B",
   },
   {
     code: "HR7",

@@ -20,7 +20,7 @@ const locked = (o: Partial<PoolSnapshot> = {}): PoolSnapshot =>
 
 describe("v2.4 scoring", () => {
   it("is versioned", () => {
-    expect(ENGINE_VERSION).toMatch(/^vigil-risk-v2\.[45]\./);
+    expect(ENGINE_VERSION).toMatch(/^vigil-risk-v2\.[456]\./);
   });
 });
 

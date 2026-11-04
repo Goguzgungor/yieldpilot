@@ -16,7 +16,7 @@ const dust = (supplied: number) =>
 
 describe("v2.2 scoring", () => {
   it("is versioned", () => {
-    expect(ENGINE_VERSION).toMatch(/^vigil-risk-v2\.[2345]\./);
+    expect(ENGINE_VERSION).toMatch(/^vigil-risk-v2\.[23456]\./);
   });
 
   it("a pool that never launched is NR: no score, no uncapped score, not eligible, and no path to a grade", () => {
@@ -65,18 +65,19 @@ describe("v2.2 scoring", () => {
 
   it("utilization is read on the most-borrowed reserve with material supply, not the pool-wide average", () => {
     // Fixed-like: idle XLM drags the pool-wide figure down while USDC is 76% borrowed.
+    // At a thousandth of Fixed's size, so the dollar depth (v2.6) does not decide.
     const d = derive(
       healthyPool({
         reserves: [
-          reserve("USDC", { source: src("base"), supplied: 51_500_000, borrowed: 39_400_000 }),
-          reserve("XLM", { priceUsd: 0.2, supplied: 600_000_000, borrowed: 10_000_000 }),
+          reserve("USDC", { source: src("base"), supplied: 51_500, borrowed: 39_400 }),
+          reserve("XLM", { priceUsd: 0.2, supplied: 600_000, borrowed: 10_000 }),
         ],
       }),
     );
     const f = utilizationFactor(d);
     expect(f.raw).toBeCloseTo(39.4 / 51.5, 6);
     expect(f.value).toBeCloseTo(53, 0);
-    expect(f.note).toMatch(/most-borrowed reserve USDC 76\.5%/);
+    expect(f.note).toMatch(/weakest reserve USDC 76\.5% borrowed/);
   });
 
   it("a dust reserve at 99% does not set the pool's utilization", () => {

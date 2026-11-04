@@ -27,11 +27,12 @@ describe("YieldBlox backtest (RECONSTRUCTION of 2026-02-22T00:00Z)", () => {
     expect(bt.ustry.extractableUsd).toBeLessThan(bt.actualExtractedUsd * 1.5);
   });
 
-  it("the SDEX rule is what makes it E: without it the pool scores D, one point under the deposit line", () => {
+  it("the SDEX rule is what makes it E: without it the pool scores D, under the deposit line", () => {
     // v2.2 scores utilization on the most-borrowed reserve (USDC was 80% borrowed),
-    // which alone takes it to 49; v2.1's pool-wide average gave 56 (C).
+    // which alone took it to 49; v2.1's pool-wide average gave 56 (C). v2.6
+    // doubles the liquidity weight and its USDC was thin in dollars too: 43.
     expect(bt.rating.uncappedScore!).toBeGreaterThan(HARD_CAPS.sdexManipulable);
-    expect(bt.rating.uncappedScore!).toBe(49);
+    expect(bt.rating.uncappedScore!).toBe(43);
   });
 
   it("rho rises monotonically with ask depth; the flag clears only at ~$26M of asks", () => {

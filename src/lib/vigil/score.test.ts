@@ -267,8 +267,16 @@ describe("reasonsHash", () => {
 describe("HR4 / HR5", () => {
   it("an active pool scoring below 50 is not eligible (HR4)", () => {
     const s = healthyPool({ backstop: backstop({ usdc: 0 }) });
-    // 89% borrowed, under a 95% max_util (so HR10 stays out of it)
-    s.reserves = s.reserves.map((r) => ({ ...r, supplyCap: null, borrowed: r.supplied * 0.89, maxUtil: 0.95, source: { ...r.source, kind: "issuer_push" as const } }));
+    // 89% borrowed, under a 95% max_util (so HR10 stays out of it), at a tenth
+    // of the healthy pool's size so the dollar depth (v2.6) does not lift it
+    s.reserves = s.reserves.map((r) => ({
+      ...r,
+      supplyCap: null,
+      supplied: r.supplied / 10,
+      borrowed: (r.supplied / 10) * 0.89,
+      maxUtil: 0.95,
+      source: { ...r.source, kind: "issuer_push" as const },
+    }));
     const dex = reserve("DEX", { supplyCap: null, source: src("reflector_dex", { maxDevPct: 10 }) });
     s.reserves.push(dex);
     s.dexDepth[dex.assetId] = depth(dex.assetId, [[1.01, 1]], true); // uncertain ⇒ 50

@@ -52,6 +52,14 @@ export interface GuideFactor {
 /** The seven factors, largest weight first. */
 export const GUIDE_FACTORS: readonly GuideFactor[] = [
   {
+    key: "utilization",
+    label: "Liquidity",
+    weight: 0.24,
+    reads:
+      "What lenders can withdraw from each reserve: the share not lent out (full marks up to 60% borrowed, none from 95%) or the dollars not lent out (none at $10K, full marks from $1M), whichever is better. The weakest reserve counts.",
+    why: "Lenders can take back only what is not lent. A $150M reserve 99% borrowed still lets $1.5M out; a $40K one 80% borrowed lets $8K out.",
+  },
+  {
     key: "sdex_manipulation",
     label: "Manipulation cost",
     weight: 0.23,
@@ -68,14 +76,6 @@ export const GUIDE_FACTORS: readonly GuideFactor[] = [
     why: "Every borrow is valued by the oracle, so a pool is only as sound as its weakest collateral price.",
   },
   {
-    key: "backstop_coverage",
-    label: "Backstop cover",
-    weight: 0.18,
-    reads:
-      "The first-loss capital behind the pool, after its withdrawal queue, against what is borrowed. Full marks at 10% of borrows.",
-    why: "The backstop absorbs bad debt before lenders do. Without it, lenders carry the first loss.",
-  },
-  {
     key: "oracle_freshness",
     label: "Price freshness",
     weight: 0.12,
@@ -83,18 +83,19 @@ export const GUIDE_FACTORS: readonly GuideFactor[] = [
     why: "A stale price stops liquidations, and an unpriced debt counts as $0 in every total.",
   },
   {
-    key: "utilization",
-    label: "Utilization",
-    weight: 0.12,
-    reads: "How much of the most-borrowed reserve is lent out. Full marks up to 60%, none from 95%.",
-    why: "The more is lent out, the less lenders can take back when they want to leave.",
-  },
-  {
     key: "supply_caps",
     label: "Supply caps",
     weight: 0.12,
     reads: "How much borrowing power a weakly priced collateral can create within its supply cap.",
     why: "Caps bound how far a mispriced collateral can reach into the pool's liquidity.",
+  },
+  {
+    key: "backstop_coverage",
+    label: "Backstop cover",
+    weight: 0.06,
+    reads:
+      "The first-loss capital behind the pool, after its withdrawal queue, against what is borrowed. Full marks at 10% of borrows.",
+    why: "The backstop absorbs bad debt before lenders do. It weighs little since v2.6: no Blend pool holding real deposits has a funded one, so it no longer tells pools apart. HR9 still caps a pool without one at B.",
   },
   {
     key: "collateral_concentration",
@@ -138,9 +139,9 @@ export const GUIDE_CEILINGS: readonly GuideCeiling[] = [
     codes: ["HR9"],
     label: "Almost no first-loss capital",
     detail:
-      "Borrowing of $1K or more with a backstop covering under 1% of it. Any bad debt goes straight to lenders, however clean the price feeds are.",
-    cap: 64,
-    grade: "C",
+      "Borrowing of $1K or more with a backstop covering under 1% of it. Any bad debt goes straight to lenders, however clean the price feeds are, so an A needs real first-loss capital (at most C until v2.6).",
+    cap: 79,
+    grade: "B",
     soft: true,
     closesDeposits: false,
   },
@@ -149,7 +150,7 @@ export const GUIDE_CEILINGS: readonly GuideCeiling[] = [
     codes: ["HR10"],
     label: "Lenders locked in",
     detail:
-      "A reserve borrowed to its own max_util, now or in any read of the last 6 hours. Its lenders can only take out what is not lent, and a new deposit is the first money they can withdraw.",
+      "A reserve borrowed to its own max_util with under $1M withdrawable, now or in any read of the last 6 hours. Its lenders can only take out what is not lent, and a new deposit is the first money they can withdraw.",
     cap: 64,
     grade: "C",
     soft: false,

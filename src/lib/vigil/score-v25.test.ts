@@ -29,7 +29,7 @@ const sample = (hoursAgo: number, supplied: number, borrowed: number, o: Partial
 
 describe("v2.5 scoring", () => {
   it("is versioned", () => {
-    expect(ENGINE_VERSION).toBe("vigil-risk-v2.5.0");
+    expect(ENGINE_VERSION).toMatch(/^vigil-risk-v2\.[56]\./);
   });
 });
 
