@@ -49,6 +49,7 @@ export default function TopBar({ wallet, registered, notSetUp, historyOn, onHome
       <nav className="actions">
         {registered && <button className={historyOn ? "quiet on" : "quiet"} onClick={onHistory}>History</button>}
         <a className="quiet" href="/ratings">Pool ratings</a>
+        <a className="quiet integrate" href="/integrate">Integrate</a>
         {/* Re-reads the cached scan; it never triggers the agent. */}
         <button className="quiet" onClick={onRefresh} title="Re-read the latest survey">Refresh</button>
         {chip}

@@ -13,11 +13,14 @@ export const dynamic = "force-dynamic";
  *                    recomputed and each pool re-rated: scripts/vigil-verify.ts.
  *                    computedAt is the timestamp the registry returns for the
  *                    rating. A run archived before the books were kept comes back without them.
+ *
+ * Open to browsers on any origin (CORS), like /api/ratings.
  */
+const CORS = { "access-control-allow-origin": "*" };
 export async function GET(req: Request) {
   const at = new URL(req.url).searchParams.get("at");
-  if (at === null) return NextResponse.json({ runs: await listArchivedRuns(), lastPublish: await getLastPublish() });
+  if (at === null) return NextResponse.json({ runs: await listArchivedRuns(), lastPublish: await getLastPublish() }, { headers: CORS });
   const run = /^\d+$/.test(at) ? await getArchivedRun(Number(at)) : null;
-  if (!run) return NextResponse.json({ error: `no archived run at ${at}` }, { status: 404 });
-  return new NextResponse(run, { headers: { "content-type": "application/json" } });
+  if (!run) return NextResponse.json({ error: `no archived run at ${at}` }, { status: 404, headers: CORS });
+  return new NextResponse(run, { headers: { "content-type": "application/json", ...CORS } });
 }

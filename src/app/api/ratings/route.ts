@@ -20,7 +20,11 @@ export const maxDuration = 300;
  *             ratings: PoolRating[], methodology, inputs?, strategies?, books? }
  * Scores are 0..100, higher = safer; `reasonsHash` is what publishers sign
  * into the RiskRegistry.
+ *
+ * Open to browsers on any origin (CORS): it is public, read-only data, and the
+ * integration guide (/integrate) tells other projects to read it from their apps.
  */
+const CORS = { "access-control-allow-origin": "*" };
 export async function GET(req: Request) {
   const url = new URL(req.url);
   try {
@@ -37,8 +41,8 @@ export async function GET(req: Request) {
       stale: result.stale,
       methodology: "https://github.com/Goguzgungor/yieldpilot/blob/feat/yieldseeker-mvp/docs/vigil/methodology.md",
       ...(url.searchParams.get("inputs") === "1" ? { inputs, strategies, books } : {}),
-    });
+    }, { headers: CORS });
   } catch (e) {
-    return NextResponse.json({ error: `ratings unavailable: ${(e as Error).message}` }, { status: 502 });
+    return NextResponse.json({ error: `ratings unavailable: ${(e as Error).message}` }, { status: 502, headers: CORS });
   }
 }

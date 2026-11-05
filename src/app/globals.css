@@ -232,6 +232,8 @@ input { font: inherit; color: inherit; }
   .metrics dd { margin-top: 6px; font-size: 20px; }
   .ruler { margin-top: 24px; }
   .links span { display: none; }
+  /* the top bar fits three actions and the wallet chip; /integrate stays linked from /ratings */
+  .actions .integrate { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -446,4 +448,111 @@ button.rt-row:hover, .rt-row--open { background: var(--faint); }
   .rt-row--head { display: none; }
   .rt-factors { grid-template-columns: 1fr 60px 28px; }
   .rt-f-note { grid-column: 1 / -1; margin-bottom: 6px; }
+}
+
+/* ── /integrate: the integration guide ──
+   Same paper as /ratings (rt-page, rt-head) and the same tabs and split as the
+   ratings guide (rg-*); what is new here is the controls and the brief. */
+.ig-live { margin-top: 18px; font: 400 11px/1.5 var(--mono); letter-spacing: 0.06em; color: var(--dim); }
+.ig-live span { margin-right: 6px; padding: 2px 6px; border: 1px solid var(--hair); color: var(--ink); letter-spacing: 0.15em; text-transform: uppercase; }
+.rt-lede a, .rg-text a, .rg-note a { color: var(--ink); text-decoration: underline; text-underline-offset: 4px; text-decoration-color: var(--dim); }
+
+.ig-step { max-width: 1120px; margin: 0 auto 56px; }
+.ig-h { display: flex; align-items: baseline; gap: 14px; margin-bottom: 18px; font: 500 clamp(22px, 2.2vw, 30px)/1.1 var(--display); letter-spacing: -0.025em; color: var(--ink-hi); }
+.ig-h span { font: 400 10.5px/1 var(--mono); letter-spacing: 0.15em; color: var(--dim); }
+
+.ig-gives { max-width: 64ch; color: var(--ink-hi); }
+.ig-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 48px; margin-top: 22px; max-width: 920px; }
+.ig-facts dt, .ig-addrs dt { font: 400 10px/1.4 var(--mono); letter-spacing: 0.15em; text-transform: uppercase; color: var(--dim); }
+.ig-facts dd { margin-top: 6px; font-size: 14px; line-height: 1.55; color: var(--mut); }
+.ig-where { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-top: 24px; }
+
+.ig-seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--hair); }
+.ig-seg button { padding: 8px 12px; font: 400 11.5px/1.2 var(--mono); letter-spacing: 0.04em; color: var(--mut); transition: color 0.15s, background 0.15s; }
+.ig-seg button + button { border-left: 1px solid var(--hair); }
+.ig-seg button:hover { color: var(--ink); }
+.ig-seg button[aria-checked="true"] { background: var(--ink-hi); color: var(--night); }
+
+.ig-label { display: flex; align-items: baseline; gap: 10px; margin-top: 6px; font: 400 10px/1.4 var(--mono); letter-spacing: 0.15em; text-transform: uppercase; color: var(--dim); }
+.ig-label + .ig-seg { margin-top: 10px; }
+.rg-note + .ig-label { margin-top: 26px; }
+.ig-label output { font: 500 30px/1 var(--display); letter-spacing: -0.03em; color: var(--ink-hi); text-transform: none; }
+.ig-label small { font-size: 10px; color: var(--mut); }
+.ig-range { -webkit-appearance: none; appearance: none; display: block; width: 100%; height: 22px; margin-top: 10px; background: transparent; }
+.ig-range::-webkit-slider-runnable-track { height: 1px; background: var(--hair); }
+.ig-range::-moz-range-track { height: 1px; background: var(--hair); }
+.ig-range::-webkit-slider-thumb { -webkit-appearance: none; width: 13px; height: 13px; margin-top: -6px; background: var(--ink-hi); border: 0; cursor: pointer; }
+.ig-range::-moz-range-thumb { width: 13px; height: 13px; background: var(--ink-hi); border: 0; border-radius: 0; cursor: pointer; }
+.ig-scale { position: relative; height: 22px; margin: 0 6px; font: 400 10px/1 var(--mono); letter-spacing: 0.1em; color: var(--dim); }
+.ig-scale i { position: absolute; top: -8px; width: 1px; height: 7px; background: var(--hair); }
+.ig-scale span { position: absolute; top: 4px; transform: translateX(-50%); }
+.ig-inline { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--dim); }
+
+.ig-pool { display: grid; grid-template-columns: minmax(0, 1fr) 54px 96px; gap: 12px; align-items: baseline; width: 100%; padding: 8px 0; border-top: 1px solid var(--faint); font-size: 13.5px; transition: background 0.15s; }
+.rg-kicker + .ig-pool { margin-top: 10px; }
+.ig-pool:hover { background: var(--faint); }
+.ig-pool[aria-pressed="true"] { box-shadow: inset 2px 0 0 var(--ink-hi); padding-left: 10px; }
+.ig-pool-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
+.ig-pool-name small { font: 400 10.5px var(--mono); color: var(--dim); }
+.ig-pool .rt-grade { font-size: 14px; }
+.ig-pool > :last-child { font: 400 11px/1.2 var(--mono); text-align: right; }
+
+.ig-check { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.4fr); gap: 18px 48px; border-top: 1px solid var(--hair); padding-top: 20px; }
+.ig-check-pool .rg-name { display: block; }
+.ig-addr { display: block; margin-top: 8px; font: 400 10.5px/1.5 var(--mono); color: var(--dim); word-break: break-all; }
+.ig-gates { list-style: none; display: grid; gap: 0; }
+.ig-gates li { display: grid; grid-template-columns: 22px minmax(0, 220px) minmax(0, 1fr); gap: 12px; align-items: baseline; padding: 10px 0; border-top: 1px solid var(--faint); font-size: 14px; }
+.ig-gates li:first-child { border-top: 0; padding-top: 0; }
+.ig-gates li::before { font: 500 13px/1 var(--mono); }
+.ig-gates .ig-pass::before { content: "✓"; color: var(--ink-hi); }
+.ig-gates .ig-fail::before { content: "✕"; color: var(--err); }
+.ig-gates b { font-weight: 500; color: var(--ink); }
+.ig-gates span { color: var(--mut); line-height: 1.45; }
+.ig-gates .ig-fail span { color: var(--err); }
+.ig-outcome { grid-column: 2; padding: 12px 14px; border: 1px solid var(--hair); font-size: 14px; line-height: 1.5; color: var(--mut); }
+.ig-outcome b { font-weight: 500; color: var(--ink-hi); }
+.ig-outcome--fail { border-color: rgba(231, 165, 154, 0.4); }
+.ig-outcome--fail b { color: var(--err); }
+.ig-check .rg-note { grid-column: 2; margin-top: 0; }
+
+.ig-toolbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; margin-top: 4px; }
+.ig-toolbar-actions { display: inline-flex; gap: 8px; }
+.ig-btn { padding: 8px 12px; border: 1px solid var(--hair); font: 400 11.5px/1.2 var(--mono); letter-spacing: 0.04em; color: var(--ink); white-space: nowrap; transition: background 0.15s; }
+.ig-btn:hover { background: var(--faint); }
+.ig-file { margin-top: 14px; font: 400 10.5px/1.4 var(--mono); color: var(--dim); }
+.ig-pre { margin-top: 12px; max-height: 520px; overflow: auto; padding: 18px 20px; border: 1px solid var(--hair); background: rgba(0, 0, 0, 0.18);
+  font: 400 12.5px/1.6 var(--mono); color: var(--ink); white-space: pre; tab-size: 2; }
+/* The brief is prose with code inside: wrap it so it reads without sideways scrolling. */
+.ig-pre--wrap { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.ig-ref { border-top: 1px solid var(--hair); }
+.ig-ref summary { padding: 14px 0; cursor: pointer; font: 500 16px/1.2 var(--display); color: var(--ink); list-style: none; }
+.ig-ref summary::-webkit-details-marker { display: none; }
+.ig-ref summary::before { content: "+"; display: inline-block; width: 22px; font: 400 13px var(--mono); color: var(--dim); }
+.ig-ref[open] summary::before { content: "−"; }
+.ig-ref > :not(summary) { margin-bottom: 18px; }
+.ig-addrs > div { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 12px; align-items: center; padding: 8px 0; border-top: 1px solid var(--faint); }
+.ig-addrs dd { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.ig-addrs code { flex: 1; min-width: 0; font: 400 12px/1.4 var(--mono); color: var(--ink); overflow-wrap: anywhere; }
+.ig-addrs .ig-btn { padding: 5px 9px; font-size: 10.5px; }
+.ig-errors > div { display: grid; grid-template-columns: 48px 190px minmax(0, 1fr); gap: 12px; padding: 7px 0; border-top: 1px solid var(--faint); font-size: 13px; }
+.ig-errors code { font: 400 12px var(--mono); color: var(--ink-hi); }
+.ig-errors b { font-weight: 500; color: var(--ink); }
+.ig-errors span { color: var(--mut); }
+.ig-list { padding-left: 22px; font-size: 14px; line-height: 1.6; color: var(--mut); max-width: 72ch; }
+.ig-list li + li { margin-top: 6px; }
+.ig-foot { margin-top: 18px; }
+
+@media (max-width: 880px) {
+  .ig-facts, .ig-check { grid-template-columns: minmax(0, 1fr); }
+  .ig-outcome, .ig-check .rg-note { grid-column: auto; }
+  .ig-gates li { grid-template-columns: 22px minmax(0, 1fr); }
+  .ig-gates li span { grid-column: 2; }
+  .ig-addrs > div { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .ig-errors > div { grid-template-columns: 44px minmax(0, 1fr); }
+  .ig-errors span { grid-column: 2; }
+  .ig-pre { font-size: 11.5px; padding: 14px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ig-seg button, .ig-pool, .ig-btn { transition: none; }
 }

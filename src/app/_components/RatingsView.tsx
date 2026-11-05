@@ -511,7 +511,7 @@ export default function RatingsView() {
             <a href="/api/ratings">
               JSON API
             </a>
-            . The engine, contracts and SDK are open source (Apache-2.0) on{" "}
+            , and the <a href="/integrate">integration guide</a> to gate deposits on it. The engine, contracts and SDK are open source (Apache-2.0) on{" "}
             <a href={REPO_URL} target="_blank" rel="noreferrer">
               GitHub
             </a>

@@ -46,6 +46,8 @@ The agent applies the same rating check before it chooses (`src/lib/vigilGate.ts
 
 Live ratings for every Blend pool (the V2 and v2.1 deployments) are served at `/ratings` (page) and `/api/ratings` (JSON, served from a cache the publisher recomputes every 30 minutes). The engine also reconstructs the YieldBlox pool as configured before the 22 Feb 2026 exploit and grades it E (`npx tsx scripts/vigil-backtest.ts`).
 
+Other projects integrate from `/integrate`: choose the API, the registry or RiskGate, set a minimum score, check it on a live pool, and copy a brief for an AI coding assistant. `/integrate.md` is the whole guide as Markdown for the assistant to read. Its content and snippets live in `src/lib/integrate/`, and both ratings endpoints are open to browsers (CORS).
+
 ## Testnet contracts
 
 | Contract | Id |
