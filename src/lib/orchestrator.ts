@@ -16,15 +16,23 @@ export interface TickDeps {
   rebalancedSince: (sinceTs: number) => Promise<bigint>;
   minYieldDeltaBps: number; perTxCapStroops: bigint; dailyCapStroops: bigint;
   cooldownSec: number; lastRebalanceAt: number; now: number;
+  /**
+   * Scan, gate and decide only: no execution, no position or ledger write, no
+   * log line. The silent snapshot refresh after each Vigil publish uses it, so
+   * the homepage follows the 30-minute ratings without filling the activity log
+   * (History reads the last 50 entries) or moving the agent's bookkeeping.
+   */
+  dryRun?: boolean;
 }
 
 export async function runTick(d: TickDeps): Promise<{ acted: boolean; reason: string }> {
   const raw = await d.scan();
   const scored = d.gate ? d.gate(scorePools(raw, d.tolerance)) : scorePools(raw, d.tolerance);
-  await d.log("scan", `scanned ${raw.length} pools, ${scored.filter((p) => p.eligible).length} eligible`);
+  if (!d.dryRun) await d.log("scan", `scanned ${raw.length} pools, ${scored.filter((p) => p.eligible).length} eligible`);
 
   const pos = await d.getPosition();
   const decision = await d.decide({ pools: scored, position: pos, tolerance: d.tolerance });
+  if (d.dryRun) return { acted: false, reason: "dry-run" };
   if (decision.action !== "rebalance" || !decision.toPool) {
     await d.log("decision", `hold: ${decision.rationale}`);
     return { acted: false, reason: "hold" };

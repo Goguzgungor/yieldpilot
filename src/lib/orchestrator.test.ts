@@ -25,6 +25,29 @@ function deps(over: Partial<TickDeps> = {}): TickDeps {
   };
 }
 
+describe("runTick dry run (the silent snapshot refresh)", () => {
+  it("scans, gates and decides, but executes, commits, records and logs nothing", async () => {
+    const gate = vi.fn((s) => s);
+    const d = deps({ dryRun: true, gate });
+    const r = await runTick(d);
+    expect(d.scan).toHaveBeenCalled();
+    expect(gate).toHaveBeenCalled();
+    expect(d.decide).toHaveBeenCalled();
+    expect(d.rebalance).not.toHaveBeenCalled();
+    expect(d.deposit).not.toHaveBeenCalled();
+    expect(d.commitPosition).not.toHaveBeenCalled();
+    expect(d.recordRebalance).not.toHaveBeenCalled();
+    expect(d.log).not.toHaveBeenCalled();
+    expect(r).toEqual({ acted: false, reason: "dry-run" });
+  });
+
+  it("stays silent on a hold too", async () => {
+    const d = deps({ dryRun: true, decide: vi.fn(async () => ({ action: "hold" as const, rationale: "nothing better" })) });
+    expect(await runTick(d)).toEqual({ acted: false, reason: "dry-run" });
+    expect(d.log).not.toHaveBeenCalled();
+  });
+});
+
 describe("runTick guards", () => {
   it("executes rebalance when delta and caps pass", async () => {
     const d = deps();

@@ -1,9 +1,9 @@
 import { after, NextResponse } from "next/server";
 import { requestHasKey } from "../../../../lib/routeKey";
-import { getLastPublish, publishVigilRatings } from "../../../../lib/runtime";
+import { getLastPublish, publishVigilRatings, runQuietScanRefresh } from "../../../../lib/runtime";
 
 export const dynamic = "force-dynamic";
-// The run after the response: a fresh mainnet read (~90 s) plus publish_batch.
+// The run after the response: a fresh mainnet read (~90 s), publish_batch, then the pool scan.
 export const maxDuration = 300;
 
 /**
@@ -11,6 +11,10 @@ export const maxDuration = 300;
  * testnet RiskRegistry, so get_rating and the RiskGate stay fresh (the registry
  * keeps a rating 2 h). Called every 30 minutes by an external scheduler, since
  * Vercel Hobby crons run at most daily.
+ *
+ * Then it refreshes the homepage's scan snapshot against the new ratings,
+ * silently (runQuietScanRefresh: no funds move, no log line), so which pools
+ * are open follows the ratings instead of waiting for the daily agent tick.
  *
  * Answers 202 at once and runs after the response, so a caller with a short
  * timeout still starts a full run; a run started in the last 4 minutes is not
@@ -30,6 +34,11 @@ export async function GET(req: Request) {
       await publishVigilRatings(secret);
     } catch (e) {
       console.error(`vigil publish failed: ${(e as Error).message}`);
+    }
+    try {
+      await runQuietScanRefresh();
+    } catch (e) {
+      console.error(`scan refresh failed: ${(e as Error).message}`);
     }
   });
   return NextResponse.json({ accepted: true, previous: await getLastPublish() }, { status: 202 });

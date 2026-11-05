@@ -242,7 +242,7 @@ function supplyForUser(rt: Runtime, user: UserRegistration, amount: bigint): Pro
  * Cron / autonomous tick). Scan + decision are cached either way so the UI is
  * always fed.
  */
-async function tick(rt: Runtime, doExecute: boolean): Promise<void> {
+async function tick(rt: Runtime, doExecute: boolean, quiet = false): Promise<void> {
   if (rt.running) return; // idempotency: never overlap ticks
   rt.running = true;
   try {
@@ -316,6 +316,7 @@ async function tick(rt: Runtime, doExecute: boolean): Promise<void> {
       cooldownSec: rt.cfg.rebalanceCooldownSec,
       lastRebalanceAt: rt.lastRebalanceAt,
       now,
+      dryRun: quiet,
     });
     if (r.acted) rt.lastRebalanceAt = now;
 
@@ -364,7 +365,8 @@ async function tick(rt: Runtime, doExecute: boolean): Promise<void> {
       }
     }
   } catch (e) {
-    await rt.db.log("error", `tick failed: ${(e as Error).message}`);
+    if (quiet) console.error(`quiet scan refresh failed: ${(e as Error).message}`);
+    else await rt.db.log("error", `tick failed: ${(e as Error).message}`);
   } finally {
     rt.running = false;
   }
@@ -399,13 +401,14 @@ async function readDiscoveryCache(
  * background refresh — on serverless any work after the response is frozen, so
  * the daily Cron is what re-discovers.
  */
-async function ensurePoolIds(rt: Runtime): Promise<void> {
+async function ensurePoolIds(rt: Runtime, quiet = false): Promise<void> {
   if (rt.poolIds && rt.poolIds.length) return;
+  const log: Runtime["db"]["log"] = quiet ? async () => {} : (k, m, meta) => rt.db.log(k, m, meta);
 
   const cached = await readDiscoveryCache(rt);
   if (cached && cached.poolIds.length) {
     rt.poolIds = cached.poolIds;
-    await rt.db.log("discovery", `using ${cached.poolIds.length} cached pool id(s)`, {
+    await log("discovery", `using ${cached.poolIds.length} cached pool id(s)`, {
       poolIds: cached.poolIds,
       source: "cache",
       discoveredAt: cached.discoveredAt,
@@ -418,14 +421,14 @@ async function ensurePoolIds(rt: Runtime): Promise<void> {
     rt.poolIds = discovered;
     await cacheDiscovery(rt, discovered);
     const fromOnchain = !arraysEqual(discovered, rt.cfg.scanBlendPoolIds);
-    await rt.db.log(
+    await log(
       "discovery",
       `discovered ${discovered.length} Blend pool(s) (${fromOnchain ? "on-chain" : "fallback"})`,
       { poolIds: discovered, source: fromOnchain ? "onchain" : "fallback" },
     );
   } catch (e) {
     rt.poolIds = rt.cfg.scanBlendPoolIds;
-    await rt.db.log(
+    await log(
       "discovery",
       `pool discovery failed, using ${rt.poolIds.length} fallback pool(s): ${(e as Error).message}`,
       { poolIds: rt.poolIds, source: "fallback" },
@@ -453,6 +456,19 @@ export async function runScanRefresh(): Promise<void> {
   const rt = getRuntime();
   await ensurePoolIds(rt);
   await tick(rt, false);
+}
+
+/**
+ * Silent snapshot refresh, run after each Vigil publish (every 30 minutes):
+ * scan → score → Vigil gate → decide, then cache the scan and the decision for
+ * the homepage. Nothing executes, nothing is logged, the position and the
+ * rebalance ledger are untouched (runTick dryRun). Without it the homepage only
+ * changed at the daily tick, hours behind the ratings that decide eligibility.
+ */
+export async function runQuietScanRefresh(): Promise<void> {
+  const rt = getRuntime();
+  await ensurePoolIds(rt, true);
+  await tick(rt, false, true);
 }
 
 /**
