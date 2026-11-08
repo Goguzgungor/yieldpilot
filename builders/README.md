@@ -43,6 +43,7 @@ Melike is a Stellar Türkiye ambassador, and the application says so.
 | Run archive (90 days) | [yieldpilot.org/api/ratings/runs](https://yieldpilot.org/api/ratings/runs); one run with everything it was computed from: `?at=<computedAt>` |
 | Source (Apache-2.0) | [github.com/Goguzgungor/yieldpilot](https://github.com/Goguzgungor/yieldpilot), branch `feat/yieldseeker-mvp`: contracts in `contracts/`, engine in `src/lib/vigil/`, SDK in `packages/vigil-sdk/` |
 | Methodology | [`docs/vigil/methodology.md`](https://github.com/Goguzgungor/yieldpilot/blob/feat/yieldseeker-mvp/docs/vigil/methodology.md): factors, hard rules, live results (§7), backtest (§8), limitations (§9), version history (§10) |
+| Technical architecture | [`docs/technical-architecture.md`](https://github.com/Goguzgungor/yieldpilot/blob/feat/yieldseeker-mvp/docs/technical-architecture.md): components, contracts, data flows, security model, testing, roadmap |
 | Legacy wallet migration | [`docs/legacy-migration-2026-11-02.md`](https://github.com/Goguzgungor/yieldpilot/blob/feat/yieldseeker-mvp/docs/legacy-migration-2026-11-02.md) (21 testnet transactions) |
 
 ### On-chain (testnet)

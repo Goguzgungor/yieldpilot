@@ -73,7 +73,7 @@ npx tsx scripts/vigil-verify.ts  # check the latest published run against its ar
 npx tsx scripts/vigil-backtest.ts # YieldBlox reconstruction (offline)
 ```
 
-Copy `.env.example` to `.env`. `CLAUDE.md` describes the architecture: the scan/exec split, per-user execution and the smart-account auth details.
+Copy `.env.example` to `.env`. [`docs/technical-architecture.md`](docs/technical-architecture.md) is the technical architecture document: components, contracts, data flows, security model, testing. `CLAUDE.md` has the developer notes: the scan/exec split, per-user execution and the smart-account auth details.
 
 ## Layout
 
