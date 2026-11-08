@@ -412,10 +412,6 @@ The database name is still `yieldseeker` (the project's former name); it stays o
 | **Compromised or lazy publisher** | Every published hash can be recomputed from the archived inputs by anyone (`vigil-verify.ts`); the registry takes M-of-N with a lower median and the oldest timestamp; a removed publisher stops counting at once | The testnet registry is **1-of-1** with one key and a single-key admin. T2 makes it ≥ 3 publishers at threshold 2 with a multisig admin |
 | **Stale or unavailable registry** | Deposits fail closed (`#4114`, `#4116`); withdrawals never depend on the registry | A stalled publisher stops new deposits |
 | **Oracle manipulation of a pool** | Modelled explicitly (ρ on the thinnest 24 h book, two-round hold); a profitable attack is grade E and not eligible | Partial book coverage (Horizon USDC book, 200 levels, no AMM) and attacker-friendly simplifications: the model errs toward flagging |
-| **Contract bugs** | RiskGate has no admin and no upgrade path; 79 contract tests plus a compatibility suite against the **deployed** OpenZeppelin 0.7 account wasm with real ed25519 signatures and no mocked auth | Fixing a guard bug means a new deployment and each owner running `remove_policy` + `add_policy`. An external audit (Audit Bank) is T2/T3 |
-| **Methodology drift** | Every engine version is documented with its reason; the version is inside every `reasonsHash` | The registry entry does not carry the version yet, so an owner's minimum changes meaning when the methodology changes; RiskRegistry v1.1 stores version and eligibility on-chain |
-
-What the user must trust today: the publisher set (one key, the team's), the registry admin (one key), the OpenZeppelin account and policy code, and Blend itself. What the user does **not** have to trust: the YieldPilot backend with their funds, the agent key beyond the rules above, or yieldpilot.org's server to tell the truth about a rating (the archive makes every rating recomputable).
 
 ---
 
