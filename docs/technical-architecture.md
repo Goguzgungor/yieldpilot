@@ -26,8 +26,7 @@ This document describes how the system is built, for the Stellar Community Fund 
 7. [Testing and verification](#7-testing-and-verification)
 8. [Deployed addresses](#8-deployed-addresses)
 9. [Repository map](#9-repository-map)
-10. [Roadmap: what the SCF deliverables change](#10-roadmap-what-the-scf-deliverables-change)
-11. [Known limitations](#11-known-limitations)
+10. [Known limitations](#11-known-limitations)
 
 ---
 
@@ -486,25 +485,7 @@ Toolchain: soroban-sdk 28.0.0, stellar-accounts 0.8.0, stellar CLI 26.0.0, targe
 
 ---
 
-## 10. Roadmap: what the SCF deliverables change
-
-The application ([`builders/submission.md`](../builders/submission.md), "Deliverables") funds the work that turns this architecture from a single-team testnet system into a multi-publisher mainnet one. Architecturally:
-
-| Deliverable | Change to the system |
-|---|---|
-| 1.1 Ratings service v1 | every archived run copied to a permanent, content-addressed public store outside the deployment; `vigil verify <run>` in the SDK; every DeFindex factory vault and strategy enumerated and rated; a 14-day availability measurement |
-| 1.2 Methodology v1.0 | a public review of the methodology (≥ 3 weeks), a specification of how a new publisher warms up its 24 h and 6 h windows and how far two publishers may disagree, three backtests with published inputs |
-| 1.3 RiskRegistry v1.1 | each submission carries the **engine version** and an **eligibility flag**; `get_rating` returns both, so an owner's minimum can be pinned to a methodology and a not-eligible pool is refused by the flag instead of a 0 |
-| 2.1 RiskGate v1 | refuses ratings flagged not eligible or from a version the owner did not accept; a submit-scoped ticket closes the direct-transfer gap; DeFindex vault deposit and withdraw support; tested against a `stellar-accounts` 0.8 account, whose auth digest differs from the deployed 0.7 one; code freeze in week 10 |
-| 2.2 Audit readiness | Audit Bank application on the frozen code with threat model, invariants and test report |
-| 2.3 M-of-N operation | testnet registry at threshold 2 with ≥ 3 publishers on separate keys and hosting (at least one outside Vercel) and a multisig admin; publisher client and runbook so an outside organisation joins by registering one key; 30 days of measured publishing and a published agreement comparison |
-| 3.1–3.2 Mainnet | RiskRegistry and RiskGate on mainnet after the audit; ≥ 3 publishers live for 14 days |
-| 3.3–3.4 SDK v1 and integrations | the SDK on npm with a `smart-account-kit` example; RiskGate offered upstream to ≥ 2 open-source Stellar wallet or vault codebases |
-| 3.5 YieldPilot mainnet beta | a capped beta (≤ $500 per user, ≤ 50 users) through RiskGate on mainnet, on `stellar-accounts ≥ 0.8` accounts: the first real-funds use of the gate |
-
----
-
-## 11. Known limitations
+## 10. Known limitations
 
 Stated here so a reader does not have to infer them; the detailed versions are in [methodology §9](vigil/methodology.md#9-known-limitations-and-assumptions) and [contracts/README "Known limitations"](../contracts/README.md#known-limitations--residual-risk).
 
