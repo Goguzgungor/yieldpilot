@@ -12,9 +12,9 @@ import { z } from "zod";
 import { parseConfig, type Config } from "./config";
 import { createDb, type Db } from "./db";
 import * as registry from "./registry";
-import { createBlendReader, createBlendSource, scanSource, type BlendReader } from "./scanner";
+import { createBlendReader, createBlendSource, createPoolCache, scanSource, type BlendReader } from "./scanner";
 import { createBlendPositionTvlReader, createDefindexSource } from "./defindex";
-import { createBlendOnchainPoolSource, createPoolDiscovery, type PoolDiscovery } from "./discovery";
+import { createBlendOnchainPoolSource, createPoolDiscovery, isDiscoveryCacheFresh, mergePoolIds, type PoolDiscovery } from "./discovery";
 import { createSorobanClient, createExecutor, type Executor } from "./executor";
 import { createKeypairWallet, createPolicySignerWallet } from "./wallet";
 import { decide } from "./agent";
@@ -103,8 +103,12 @@ export function getRuntime(): Runtime {
 
   const db = createDb();
 
-  // Scan side: mainnet reader (read-only, no signing).
-  const reader = createBlendReader(cfg.scanRpcUrl, cfg.scanNetworkPassphrase, cfg.scanUsdcContractId);
+  // Scan side: mainnet reader (read-only, no signing). Every reader shares one
+  // pool/oracle cache, so a scan loads each pool once (the DeFindex strategies
+  // sit on pools the Blend scan already read) and stays under the RPC's limit.
+  const scanNetwork = { rpc: cfg.scanRpcUrl, passphrase: cfg.scanNetworkPassphrase };
+  const poolCache = createPoolCache({ network: scanNetwork });
+  const reader = createBlendReader(cfg.scanRpcUrl, cfg.scanNetworkPassphrase, cfg.scanUsdcContractId, poolCache);
   const blendSource = createBlendSource(reader);
   // Per-asset Blend readers (memoized) so DeFindex can read the USDC / EURC / XLM
   // reserve each strategy autocompounds into.
@@ -112,7 +116,7 @@ export function getRuntime(): Runtime {
   const readerFor = (assetContractId: string): BlendReader => {
     let r = blendReaderByAsset.get(assetContractId);
     if (!r) {
-      r = createBlendReader(cfg.scanRpcUrl, cfg.scanNetworkPassphrase, assetContractId);
+      r = createBlendReader(cfg.scanRpcUrl, cfg.scanNetworkPassphrase, assetContractId, poolCache);
       blendReaderByAsset.set(assetContractId, r);
     }
     return r;
@@ -123,10 +127,7 @@ export function getRuntime(): Runtime {
     ? createDefindexSource(
         readerFor,
         cfg.scanDefindexStrategies,
-        createBlendPositionTvlReader(
-          { rpc: cfg.scanRpcUrl, passphrase: cfg.scanNetworkPassphrase },
-          cfg.scanDefindexStrategies,
-        ),
+        createBlendPositionTvlReader(scanNetwork, cfg.scanDefindexStrategies, poolCache),
       )
     : null;
 
@@ -397,16 +398,18 @@ async function readDiscoveryCache(
 
 /**
  * Resolve (once per warm process) the Blend pool ids to scan: in-memory cache →
- * Mongo discovery cache → fresh on-chain discovery → curated fallback. No
- * background refresh — on serverless any work after the response is frozen, so
- * the daily Cron is what re-discovers.
+ * Mongo discovery cache while it is fresh (DISCOVERY_TTL_MS) → on-chain
+ * discovery, merged into the cached list → curated fallback. The merge never
+ * drops a known pool: the reward zone can empty out (Blend v2's did when the
+ * pools moved to v2.1), and frozen pools still belong on the plate. No
+ * background refresh — on serverless any work after the response is frozen.
  */
 async function ensurePoolIds(rt: Runtime, quiet = false): Promise<void> {
   if (rt.poolIds && rt.poolIds.length) return;
   const log: Runtime["db"]["log"] = quiet ? async () => {} : (k, m, meta) => rt.db.log(k, m, meta);
 
   const cached = await readDiscoveryCache(rt);
-  if (cached && cached.poolIds.length) {
+  if (cached && cached.poolIds.length && isDiscoveryCacheFresh(cached.discoveredAt)) {
     rt.poolIds = cached.poolIds;
     await log("discovery", `using ${cached.poolIds.length} cached pool id(s)`, {
       poolIds: cached.poolIds,
@@ -416,22 +419,25 @@ async function ensurePoolIds(rt: Runtime, quiet = false): Promise<void> {
     return;
   }
 
+  const known = cached?.poolIds ?? [];
   try {
     const discovered = await rt.poolDiscovery.discoverPoolIds();
-    rt.poolIds = discovered;
-    await cacheDiscovery(rt, discovered);
+    const merged = mergePoolIds(known, discovered);
+    rt.poolIds = merged;
+    await cacheDiscovery(rt, merged);
     const fromOnchain = !arraysEqual(discovered, rt.cfg.scanBlendPoolIds);
+    const added = merged.length - known.length;
     await log(
       "discovery",
-      `discovered ${discovered.length} Blend pool(s) (${fromOnchain ? "on-chain" : "fallback"})`,
-      { poolIds: discovered, source: fromOnchain ? "onchain" : "fallback" },
+      `discovered ${discovered.length} Blend pool(s) (${fromOnchain ? "on-chain" : "fallback"}), scanning ${merged.length}${known.length ? ` (${added} new)` : ""}`,
+      { poolIds: merged, source: fromOnchain ? "onchain" : "fallback" },
     );
   } catch (e) {
-    rt.poolIds = rt.cfg.scanBlendPoolIds;
+    rt.poolIds = known.length ? known : rt.cfg.scanBlendPoolIds;
     await log(
       "discovery",
-      `pool discovery failed, using ${rt.poolIds.length} fallback pool(s): ${(e as Error).message}`,
-      { poolIds: rt.poolIds, source: "fallback" },
+      `pool discovery failed, using ${rt.poolIds.length} ${known.length ? "cached" : "fallback"} pool(s): ${(e as Error).message}`,
+      { poolIds: rt.poolIds, source: known.length ? "cache" : "fallback" },
     );
   }
 }

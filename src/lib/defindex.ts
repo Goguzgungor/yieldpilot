@@ -1,7 +1,7 @@
-import { PoolV2 } from "@blend-capital/blend-sdk";
 import type { Network } from "@blend-capital/blend-sdk";
 import type { PoolYield, YieldSource } from "./types";
-import type { BlendReader } from "./scanner";
+import { createPoolCache, type BlendReader, type PoolCache } from "./scanner";
+import { withRetry } from "./rpcRetry";
 import type { DefindexStrategyConfig } from "./config";
 
 /** Reads a DeFindex strategy's total managed funds on-chain, as USDC stroops. */
@@ -16,12 +16,23 @@ export interface StrategyTvlReader {
  * (USDC / EURC / XLM). TVL is read on-chain from the strategy when a
  * StrategyTvlReader is supplied, otherwise the configured fallback is used.
  */
+export interface DefindexSourceOptions {
+  /** Waits before each retry of a rate-limited TVL read. */
+  tvlRetryDelaysMs?: number[];
+  sleep?: (ms: number) => Promise<void>;
+  /** Called when the live TVL can't be read and the configured fallback is shown; defaults to a console warning. */
+  onTvlError?: (strategyId: string, err: unknown) => void;
+}
+
 export function createDefindexSource(
   readerFor: (assetContractId: string) => BlendReader,
   strategies: DefindexStrategyConfig[],
   tvlReader?: StrategyTvlReader,
+  opts: DefindexSourceOptions = {},
 ): YieldSource {
   const byId = new Map(strategies.map((s) => [s.strategyId, s]));
+  const onTvlError = opts.onTvlError ?? ((id: string, e: unknown) =>
+    console.warn(`[scan] ${id} live TVL unavailable, showing the configured fallback: ${e instanceof Error ? e.message : String(e)}`));
   return {
     protocol: "defindex",
     async readPool(strategyId: string): Promise<PoolYield | null> {
@@ -34,10 +45,13 @@ export function createDefindexSource(
       let tvlUsdc = cfg.fallbackTvlUsdc;
       if (tvlReader) {
         try {
-          const live = await tvlReader.readTotalManagedFunds(strategyId);
+          const live = await withRetry(() => tvlReader.readTotalManagedFunds(strategyId), {
+            delaysMs: opts.tvlRetryDelaysMs ?? [2_000, 4_000],
+            sleep: opts.sleep,
+          });
           if (live !== null) tvlUsdc = live;
-        } catch {
-          // keep fallback TVL
+        } catch (e) {
+          onTvlError(strategyId, e); // keep fallback TVL
         }
       }
 
@@ -73,35 +87,26 @@ export function toUsdcStroops(amount: bigint, decimals: number, priceUsd: number
  * pool as the strategy contract's own supply/collateral position, so
  * `pool.loadUser(strategyId)` is the on-chain source of truth. Non-USDC
  * positions are converted with the pool's oracle price. Pool + oracle loads
- * are memoized for `ttlMs` so a scan of several strategies on the same pool
- * costs one load.
+ * come from `cache`; pass the scan's shared cache so a strategy on a pool the
+ * scan already read costs only its `loadUser`.
  */
 export function createBlendPositionTvlReader(
   network: Network,
   strategies: DefindexStrategyConfig[],
-  ttlMs = 60_000,
+  cache: PoolCache = createPoolCache({ network, ttlMs: 60_000 }),
 ): StrategyTvlReader {
   const byId = new Map(strategies.map((s) => [s.strategyId, s]));
-  const cache = new Map<string, { at: number; pool: Promise<PoolV2> }>();
-  const loadPool = (poolId: string): Promise<PoolV2> => {
-    const hit = cache.get(poolId);
-    if (hit && Date.now() - hit.at < ttlMs) return hit.pool;
-    const pool = PoolV2.load(network, poolId);
-    cache.set(poolId, { at: Date.now(), pool });
-    pool.catch(() => cache.delete(poolId));
-    return pool;
-  };
   return {
     async readTotalManagedFunds(strategyId: string): Promise<bigint | null> {
       const cfg = byId.get(strategyId);
       if (!cfg) return null;
-      const pool = await loadPool(cfg.blendPoolId);
+      const pool = await cache.pool(cfg.blendPoolId);
       const reserve = pool.reserves.get(cfg.assetContractId);
       if (!reserve) return null;
       const user = await pool.loadUser(strategyId);
       const amount = user.getSupply(reserve) + user.getCollateral(reserve);
       if (cfg.asset === "USDC") return toUsdcStroops(amount, reserve.config.decimals, 1);
-      const price = (await pool.loadOracle()).getPriceFloat(cfg.assetContractId);
+      const price = (await cache.oracle(cfg.blendPoolId)).getPriceFloat(cfg.assetContractId);
       return price === undefined ? null : toUsdcStroops(amount, reserve.config.decimals, price);
     },
   };

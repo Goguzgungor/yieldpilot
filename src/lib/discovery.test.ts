@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { createPoolDiscovery, isDiscoveryCacheFresh, DISCOVERY_TTL_MS, type PoolSource } from "./discovery";
+import { createPoolDiscovery, isDiscoveryCacheFresh, mergePoolIds, DISCOVERY_TTL_MS, type PoolSource } from "./discovery";
 
 const FALLBACK = ["C_FALLBACK_A", "C_FALLBACK_B"];
 
@@ -24,6 +24,18 @@ describe("createPoolDiscovery", () => {
   it("returns the fallback list when the source throws", async () => {
     const d = createPoolDiscovery(sourceThrowing(), FALLBACK);
     expect(await d.discoverPoolIds()).toEqual(FALLBACK);
+  });
+});
+
+describe("mergePoolIds", () => {
+  it("keeps every known pool and appends the new ones, deduped", () => {
+    expect(mergePoolIds(["A", "B"], ["B", "C", "C"])).toEqual(["A", "B", "C"]);
+  });
+  it("does not shrink when discovery comes back with fewer pools", () => {
+    expect(mergePoolIds(["A", "B", "C"], ["A"])).toEqual(["A", "B", "C"]);
+  });
+  it("is the discovery result when nothing was known", () => {
+    expect(mergePoolIds([], ["A", "B"])).toEqual(["A", "B"]);
   });
 });
 

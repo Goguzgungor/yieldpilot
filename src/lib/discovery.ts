@@ -25,6 +25,15 @@ export function isDiscoveryCacheFresh(
 }
 
 /**
+ * The pool ids to scan after a re-discovery: every known id, then the newly
+ * discovered ones, deduped. A known pool is never dropped (it may have only
+ * left the reward zone); one without a USDC reserve is left out by the scan.
+ */
+export function mergePoolIds(known: string[], discovered: string[]): string[] {
+  return [...new Set([...known, ...discovered])];
+}
+
+/**
  * A source of Blend pool contract ids. Implementations may read on-chain state,
  * call an API, or return a static list. Kept tiny so it can be faked in tests
  * without any network access.

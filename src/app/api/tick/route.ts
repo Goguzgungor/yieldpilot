@@ -4,7 +4,7 @@ import { runAgentTick } from "../../../lib/runtime";
 export const dynamic = "force-dynamic";
 // The autonomous tick scans mainnet, picks the best eligible pool, and supplies each user's idle
 // USDC on testnet — give it room beyond the 10s default.
-export const maxDuration = 60;
+export const maxDuration = 300; // the scan retries rate-limited reads (up to ~30 s per source) before the per-user supply
 
 /**
  * GET /api/tick — the autonomous agent tick, invoked DAILY by Vercel Cron (see

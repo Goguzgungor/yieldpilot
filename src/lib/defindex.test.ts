@@ -59,7 +59,32 @@ describe("createDefindexSource", () => {
     const nullReader: StrategyTvlReader = { async readTotalManagedFunds() { return null; } };
     const throwReader: StrategyTvlReader = { async readTotalManagedFunds() { throw new Error("rpc"); } };
     expect((await createDefindexSource(readerFor, strategies, nullReader).readPool("C_STRAT_USDC"))?.tvlUsdc).toBe(1_000_0000000n);
-    expect((await createDefindexSource(readerFor, strategies, throwReader).readPool("C_STRAT_USDC"))?.tvlUsdc).toBe(1_000_0000000n);
+    const quiet = { onTvlError: () => {} };
+    expect((await createDefindexSource(readerFor, strategies, throwReader, quiet).readPool("C_STRAT_USDC"))?.tvlUsdc).toBe(1_000_0000000n);
+  });
+
+  it("retries a rate-limited TVL read instead of showing the fallback", async () => {
+    let calls = 0;
+    const limited: StrategyTvlReader = {
+      async readTotalManagedFunds() {
+        if (++calls < 3) throw new Error("Request failed with status code 429");
+        return 18_893_585_0000000n;
+      },
+    };
+    const src = createDefindexSource(readerFor, strategies, limited, { sleep: async () => {} });
+    expect((await src.readPool("C_STRAT_USDC"))?.tvlUsdc).toBe(18_893_585_0000000n);
+    expect(calls).toBe(3);
+  });
+
+  it("reports a TVL read that still fails, and keeps the fallback", async () => {
+    const errors: string[] = [];
+    const down: StrategyTvlReader = { async readTotalManagedFunds() { throw new Error("Request failed with status code 503"); } };
+    const src = createDefindexSource(readerFor, strategies, down, {
+      sleep: async () => {},
+      onTvlError: (id, e) => errors.push(`${id}: ${(e as Error).message}`),
+    });
+    expect((await src.readPool("C_STRAT_USDC"))?.tvlUsdc).toBe(1_000_0000000n);
+    expect(errors).toEqual(["C_STRAT_USDC: Request failed with status code 503"]);
   });
 
   it("returns null for an unknown strategy id", async () => {
