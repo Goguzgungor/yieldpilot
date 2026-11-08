@@ -8,6 +8,7 @@ import {
 } from "@stellar/stellar-sdk";
 import { buildAgentAuth } from "./smartAccount";
 import type { TxResult } from "./types";
+import { createRpcServer } from "./rpcServer";
 
 export interface Wallet {
   /**
@@ -86,7 +87,7 @@ export function createPolicySignerWallet(opts: {
   server?: rpc.Server;
 }): Wallet {
   const server =
-    opts.server ?? new rpc.Server(opts.rpcUrl, { allowHttp: opts.rpcUrl.startsWith("http://") });
+    opts.server ?? createRpcServer(opts.rpcUrl, { allowHttp: opts.rpcUrl.startsWith("http://") });
   const agent = opts.agentKeypair;
 
   return {

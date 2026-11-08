@@ -35,6 +35,7 @@ import { THRESHOLDS } from "./vigil/score";
 import { utilizationHistoryFromRuns } from "./vigil/utilizationHistory";
 import { nextBookIndex, nextRunIndex, packRun, publishRatings, unpackRun, type PublishOutcome } from "./vigil/publish";
 import { gateByVigil, vigilCandidatePools, type VigilVerdict } from "./vigilGate";
+import { createRpcServer } from "./rpcServer";
 
 /** Latest agent decision exposed to the UI (chosen pool + rationale + action). */
 export interface LatestDecision {
@@ -143,7 +144,7 @@ export function getRuntime(): Runtime {
 
   // Exec side: testnet signer + client (real txs, no real money).
   const agentKeypair = Keypair.fromSecret(cfg.agentSignerSecret);
-  const execServer = new rpc.Server(cfg.execRpcUrl, {
+  const execServer = createRpcServer(cfg.execRpcUrl, {
     allowHttp: cfg.execRpcUrl.startsWith("http://"),
   });
   // Legacy single-wallet executor (keypair mode): the agent signs as itself and
@@ -840,7 +841,7 @@ export async function publishVigilRatings(publisherSecret: string): Promise<Last
   if (Date.now() - run.cachedAt > 5 * 60 * 1000) run = await getRatings({ refresh: true });
   await archiveRun(rt, run.data);
   const outcome = await publishRatings({
-    server: new rpc.Server(rt.cfg.execRpcUrl),
+    server: createRpcServer(rt.cfg.execRpcUrl),
     networkPassphrase: rt.cfg.execNetworkPassphrase,
     registryId,
     publisher: Keypair.fromSecret(publisherSecret.trim()),

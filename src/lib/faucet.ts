@@ -27,6 +27,7 @@ import {
   TransactionBuilder,
   type xdr,
 } from "@stellar/stellar-sdk";
+import { createRpcServer } from "./rpcServer";
 
 // ── faucet request policy (pure — unit-testable, no network) ────────────────────
 
@@ -207,7 +208,7 @@ export async function mintUsdc(opts: MintUsdcOpts): Promise<MintUsdcResult> {
 
   const owner = opts.ownerKeypair ?? deriveOwnerKeypair();
   const server =
-    opts.server ?? new rpc.Server(opts.rpcUrl, { allowHttp: opts.rpcUrl.startsWith("http://") });
+    opts.server ?? createRpcServer(opts.rpcUrl, { allowHttp: opts.rpcUrl.startsWith("http://") });
 
   // SAC `mint(to: Address, amount: i128)` — validates the recipient address and
   // handles both C… (contract) and G… recipients via the Address ScVal encoding.

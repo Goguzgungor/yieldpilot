@@ -3,6 +3,7 @@ import { PoolContractV2, RequestType } from "@blend-capital/blend-sdk";
 import type { SubmitArgs, Request } from "@blend-capital/blend-sdk";
 import type { Wallet } from "./wallet";
 import type { TxResult } from "./types";
+import { createRpcServer } from "./rpcServer";
 
 export interface SorobanClient {
   /** Build the bare Blend `pool.submit` operation (base64 op XDR). */
@@ -86,7 +87,7 @@ export type Executor = ReturnType<typeof createExecutor>;
 export function createSorobanClient(opts: {
   rpcUrl: string; networkPassphrase: string; walletAddress: string; usdcId: string;
 }): SorobanClient {
-  const server = new rpc.Server(opts.rpcUrl, { allowHttp: opts.rpcUrl.startsWith("http://") });
+  const server = createRpcServer(opts.rpcUrl, { allowHttp: opts.rpcUrl.startsWith("http://") });
 
   /** Build the bare Blend `pool.submit` operation (base64 op XDR). */
   function buildBlendOp(poolId: string, kind: "withdraw" | "deposit", amount: bigint): string {

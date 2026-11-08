@@ -1,5 +1,6 @@
 import { BackstopConfig, poolFactoryEventFromEventResponse } from "@blend-capital/blend-sdk";
 import { rpc } from "@stellar/stellar-sdk";
+import { createRpcServer } from "./rpcServer";
 
 /** Default TTL for the DB-cached pool-id list (60 minutes). */
 export const DISCOVERY_TTL_MS = 60 * 60 * 1000;
@@ -145,7 +146,7 @@ export function createBlendOnchainPoolSource(opts: {
  * are invisible, which is exactly why the reward zone is the primary source.
  */
 async function loadFactoryDeployedPools(rpcUrl: string, factoryId: string): Promise<string[]> {
-  const server = new rpc.Server(rpcUrl);
+  const server = createRpcServer(rpcUrl);
   const { sequence: latestLedger } = await server.getLatestLedger();
   const startLedger = Math.max(1, latestLedger - FACTORY_EVENT_LEDGER_LOOKBACK);
   const filter = { type: "contract" as const, contractIds: [factoryId] };

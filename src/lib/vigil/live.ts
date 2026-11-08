@@ -12,6 +12,7 @@ import type { AssetKey, BackstopSnapshot, DexDepth, PoolSnapshot, ReserveSnapsho
 import { SDEX_PRICED_KINDS } from "./types";
 import { THRESHOLDS } from "./score";
 import type { PoolVerifier } from "./discovery";
+import { createRpcServer } from "../rpcServer";
 
 /** One Blend deployment: a pool factory and the backstop its pools insure into. */
 export interface BlendDeployment {
@@ -43,7 +44,7 @@ const HORIZON_MAX_LEVELS = 200;
 type Native = unknown;
 
 export function createLiveReaders(cfg: LiveConfig) {
-  const server = new rpc.Server(cfg.rpcUrl);
+  const server = createRpcServer(cfg.rpcUrl);
   const network: Network = { rpc: cfg.rpcUrl, passphrase: cfg.passphrase };
   const horizon = cfg.horizonUrl ?? "https://horizon.stellar.org";
   const doFetch = cfg.fetchImpl ?? fetch;
