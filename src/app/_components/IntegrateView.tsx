@@ -19,6 +19,7 @@ import {
 import { RISKGATE_ERRORS, buildBrief, snippetFor } from "../../lib/integrate/brief";
 import { snippet } from "../../lib/integrate/snippets";
 import { GUIDE_BANDS } from "../../lib/vigil/guide";
+import IntegrateLiveCall from "./IntegrateLiveCall";
 
 /** What the page reads from GET /api/ratings. */
 interface LiveRating extends VerdictRating {
@@ -193,7 +194,8 @@ export default function IntegrateView() {
     [live],
   );
   const unrated = live ? live.ratings.length - rated.length : 0;
-  const selected: LiveRating | null = rated.find((r) => r.poolId === poolId) ?? rated[0] ?? null;
+  // Step 03 can also call an unrated pool (it answers None), so look in every rating.
+  const selected: LiveRating | null = live?.ratings.find((r) => r.poolId === poolId) ?? rated[0] ?? null;
   const examples = useMemo(
     () => (live ? pickExamples(live.ratings, minScore, selected?.poolId ?? null) : undefined),
     [live, minScore, selected],
@@ -395,9 +397,27 @@ export default function IntegrateView() {
 
       <section className="ig-step" aria-labelledby="ig-h3">
         <h2 className="ig-h" id="ig-h3">
-          <span>03</span>See the rule on a live pool
+          <span>03</span>
+          {path === "api" ? "See the rule on a live pool" : "Call it on-chain"}
         </h2>
-        {selected && verdict ? (
+        {path !== "api" ? (
+          <>
+            <p className="rg-text rg-lead">
+              Press Call and your browser asks the {VIGIL.network} RiskRegistry for this pool&rsquo;s rating, the same{" "}
+              <code>get_rating</code> call your {path === "riskgate" ? "users' smart accounts make" : where === "contract" ? "contract makes" : "backend makes"}.
+              Watch it travel, see the exact request and answer, and the line of code each step runs.
+            </p>
+            <IntegrateLiveCall
+              path={path}
+              where={where}
+              minScore={minScore}
+              maxAge={maxAge}
+              pool={selected}
+              pools={live?.ratings ?? []}
+              onPickPool={setPoolId}
+            />
+          </>
+        ) : selected && verdict ? (
           <div className="ig-check">
             <div className="ig-check-pool">
               <span className="rg-kicker">{selected.protocol === "defindex" ? "DeFindex strategy" : "Blend pool"}</span>
@@ -430,12 +450,18 @@ export default function IntegrateView() {
             <p className={`ig-outcome ${verdict.allowed ? "ig-outcome--pass" : "ig-outcome--fail"}`}>
               <b>{verdict.allowed ? "Deposit allowed." : "Deposit refused."}</b> {outcome(path, where, verdict, minScore)}
             </p>
-            {path !== "api" && (
-              <p className="rg-note">
-                The registry is on {VIGIL.network} and holds this mainnet pool's score, so a backend can read it
-                today. On-chain enforcement works on {VIGIL.network} only, against YieldPilot's demo pool.
-              </p>
-            )}
+            <p className="rg-note">
+              The ratings API is an HTTPS read: nothing here touches the chain. To call the on-chain registry from this
+              page, switch to{" "}
+              <button type="button" className="ig-inline" onClick={() => setPath("registry")}>
+                the registry
+              </button>{" "}
+              or{" "}
+              <button type="button" className="ig-inline" onClick={() => setPath("riskgate")}>
+                RiskGate
+              </button>
+              .
+            </p>
           </div>
         ) : (
           <p className="rg-note">{error ? "Needs the live ratings." : "Waiting for the live ratings…"}</p>
