@@ -164,12 +164,12 @@ sequenceDiagram
   P-->>C: 202 accepted (previous run's outcome)
   Note over P: runs after the response (Next.js after())
   P->>M: take publish lease (4 min)
-  P->>E: ratings older than 5 min? recompute (~90 s, mainnet)
+  P->>E: ratings older than 5 min → recompute (~90 s, mainnet)
   E->>M: vigilRatings, depth + utilization windows
-  P->>M: archive run: vigilRun:<computedAt>, books once by hash (vigilBook:<sha256>)
+  P->>M: archive the run under its computedAt, order books once each by sha256
   P->>R: publish_batch × ⌈n/8⌉ (score or 0, computedAt, reasonsHash), signed by the publisher key
   P->>M: vigilLastPublish
-  P->>S: quiet scan refresh (scan, gate, decide; no execution, no log)
+  P->>S: quiet scan refresh (scan, gate, decide: no execution, no log line)
 ```
 
 Rules the publisher follows:
@@ -276,7 +276,7 @@ sequenceDiagram
 
   A->>RPC: simulate pool.submit(SA, SA, SA, [Supply]) with recording auth
   RPC-->>A: auth entries (the SA's own entry; __check_auth mocked)
-  A->>A: payload = sha256(HashIdPreimage.sorobanAuthorization)<br/>digest = sha256(payload ‖ xdr(ScVec[rule ids]))<br/>ed25519 sign; signature = Map{context_rule_ids, signers}
+  A->>A: payload = sha256(HashIdPreimage.sorobanAuthorization)<br/>digest = sha256(payload ‖ xdr(ScVec[rule ids]))<br/>ed25519 sign, signature = Map{context_rule_ids, signers}
   A->>RPC: re-simulate the SIGNED tx, assemble footprint + resources
   A->>RPC: submit
   RPC->>SA: __check_auth(payload, signature, contexts)
