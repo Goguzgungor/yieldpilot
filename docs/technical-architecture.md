@@ -510,10 +510,5 @@ Stated here so a reader does not have to infer them; the detailed versions are i
 
 - **Testnet only** for execution, the registry and RiskGate. Mainnet is read-only. The only callable rated testnet pool is YieldPilot's own exec pool, which carries the rating of the mainnet pool YieldPilot holds.
 - **One publisher, one admin key** on the registry. The contract supports 16 publishers and a threshold; the operation does not exist yet (deliverable 2.3).
-- **Ratings depend on the publisher's own history** for the 24 h and 6 h windows, and cannot be recomputed from the chain alone, because Horizon keeps no past order books. The archive makes them recomputable from our record.
-- **The registry entry carries no engine version and eligibility only as a 0** (deliverable 1.3).
-- **RiskGate's direct-transfer gap** (donation to the pool within the cap) and **churn** are open until RiskGate v1.
 - **No multi-pool execution**: every deposit goes to the single exec pool.
 - **No contract-level risk** of pools, oracles or DeFindex (upgradeability, admin keys) is modelled beyond the oracle class.
-- **The methodology changed six times in two days** (v2.0 → v2.5, 2026-11-01/02) and once more on 2026-11-04 (v2.6, the team's own change, breaking the announced v2.5 freeze). Every change is documented with its reason in methodology §10, and the version is inside every hash.
-- **Migration in flight** in the state layer: `db.ts` and `registry.ts` are async Mongo implementations and a few `runtime.ts` accessors still assume the older synchronous shapes.
