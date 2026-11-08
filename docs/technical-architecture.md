@@ -275,7 +275,7 @@ sequenceDiagram
   participant B as Blend exec pool
 
   A->>RPC: simulate pool.submit(SA, SA, SA, [Supply]) with recording auth
-  RPC-->>A: auth entries (the SA's own entry; __check_auth mocked)
+  RPC-->>A: auth entries (the SA's own entry, __check_auth mocked)
   A->>A: payload = sha256(HashIdPreimage.sorobanAuthorization)<br/>digest = sha256(payload ‖ xdr(ScVec[rule ids]))<br/>ed25519 sign, signature = Map{context_rule_ids, signers}
   A->>RPC: re-simulate the SIGNED tx, assemble footprint + resources
   A->>RPC: submit
