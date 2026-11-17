@@ -9,6 +9,10 @@
  *   VIGIL_UTIL_HISTORY=util.json npx tsx scripts/vigil-ratings.ts …
  *       keep each reserve's reads between runs, so HR10 holds for 6 h after a
  *       reserve reaches its max_util (as the server does) instead of one read
+ *   VIGIL_KNOWN_POOLS=pools.json npx tsx scripts/vigil-ratings.ts …
+ *       keep the pools found so far, and the ledger that list is complete to,
+ *       in that file (as the server does); without it every run starts from the
+ *       list built into src/lib/vigil/discovery.ts
  *
  * Reads SCAN_* settings from .env (never prints secrets).
  */
@@ -57,6 +61,7 @@ const fileStore = (path: string) => ({
   load: async () => (existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : {}),
   save: async (h: unknown) => writeFileSync(path, JSON.stringify(h)),
 });
+const knownPath = process.env.VIGIL_KNOWN_POOLS;
 const started = Date.now();
 const result = await runLiveVigil({
   rpcUrl,
@@ -66,6 +71,14 @@ const result = await runLiveVigil({
   defindexStrategies: strategies,
   ...(historyPath ? { depthHistory: fileStore(historyPath) } : {}),
   ...(utilPath ? { utilizationHistory: fileStore(utilPath) } : {}),
+  ...(knownPath
+    ? {
+        knownPools: {
+          load: async () => (existsSync(knownPath) ? JSON.parse(readFileSync(knownPath, "utf8")) : null),
+          save: async (k) => writeFileSync(knownPath, JSON.stringify(k)),
+        },
+      }
+    : {}),
   log: (m) => console.error(`[vigil] ${m}`),
 });
 

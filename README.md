@@ -44,7 +44,7 @@ The agent applies the same rating check before it chooses (`src/lib/vigilGate.ts
 | Mainnet ratings can be published to the registry and read back on-chain | `src/lib/vigil/publish.ts`, run every 30 minutes by `/api/cron/publish` on yieldpilot.org (an external scheduler calls it: Vercel's Hobby plan runs crons at most daily) and by hand with `scripts/vigil-publish.ts`; each run's full input, order books included, is kept 90 days at `/api/ratings/runs` |
 | Anyone can check a published rating without keys | `npx tsx scripts/vigil-verify.ts [computedAt]` recomputes every reasonsHash of an archived run, re-rates every pool and compares with what the registry holds (`src/lib/vigil/audit.ts`) |
 
-Live ratings for every Blend pool (the V2 and v2.1 deployments) are served at `/ratings` (page) and `/api/ratings` (JSON, served from a cache the publisher recomputes every 30 minutes). The engine also reconstructs the YieldBlox pool as configured before the 22 Feb 2026 exploit and grades it E (`npx tsx scripts/vigil-backtest.ts`).
+Live ratings for every Blend pool (the V2 and v2.1 deployments, 13 pools) are served at `/ratings` (page) and `/api/ratings` (JSON, served from a cache the publisher recomputes every 30 minutes). The pool list is built from the factories' `deploy` events and checked with `is_pool` on every run; `coverage` in the API says how each run found it. From 2026-11-06 to 2026-11-17 only 3 of the 13 were rated, because the list then depended on an indexer whose API closed (methodology §1). The engine also reconstructs the YieldBlox pool as configured before the 22 Feb 2026 exploit and grades it E (`npx tsx scripts/vigil-backtest.ts`).
 
 Other projects integrate from `/integrate`: choose the API, the registry or RiskGate, set a minimum score, check it on a live pool, and copy a brief for an AI coding assistant. `/integrate.md` is the whole guide as Markdown for the assistant to read. Its content and snippets live in `src/lib/integrate/`, and both ratings endpoints are open to browsers (CORS).
 
@@ -80,7 +80,7 @@ Copy `.env.example` to `.env`. [`docs/technical-architecture.md`](docs/technical
 | Path | What |
 |---|---|
 | `src/lib/` | agent loop: scanner, DeFindex, risk, deterministic pool choice, per-user executor, smart-account auth |
-| `src/lib/vigil/` | Vigil risk engine (v2.2; history in `docs/vigil/methodology.md` §10) |
+| `src/lib/vigil/` | Vigil risk engine (v2.6; history in `docs/vigil/methodology.md` §10) |
 | `src/app/` | Next.js UI + API routes (`/api/onboard/*`, `/api/scan`, `/api/ratings`, …) |
 | `contracts/` | `vigil-guard`, `vigil-registry`, shared `vigil-interface` (Rust, soroban-sdk 28, OZ stellar-accounts 0.8) |
 | `packages/vigil-sdk/` | TypeScript client |

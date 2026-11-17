@@ -759,6 +759,12 @@ export async function getRatings(opts: { refresh?: boolean } = {}): Promise<Cach
     passphrase: rt.cfg.scanNetworkPassphrase,
     deployments: rt.cfg.scanBlendDeployments,
     curatedPoolIds: rt.cfg.scanBlendPoolIds,
+    // The pools found so far and the ledger that list is complete to, so the
+    // next run only has to read the deploy events since.
+    knownPools: {
+      load: async () => JSON.parse((await rt.db.getKV("vigilKnownPools")) ?? "null"),
+      save: (k) => rt.db.setKV("vigilKnownPools", JSON.stringify(k)),
+    },
     depthHistory: {
       load: async () => JSON.parse((await rt.db.getKV("vigilDepthHistory")) ?? "{}"),
       save: (h) => rt.db.setKV("vigilDepthHistory", JSON.stringify(h)),

@@ -15,7 +15,7 @@ Every factual statement below is tagged with its source:
 | Tag | Source |
 |---|---|
 | **[chain]** | A contract call on mainnet via Soroban RPC (`https://mainnet.sorobanrpc.com`) on 2026-11-01. |
-| **[SE]** | Stellar Expert's public API, `https://api.stellar.expert/explorer/public/...`. |
+| **[SE]** | Stellar Expert's public API, `https://api.stellar.expert/explorer/public/...`. Read on the date given; since 2026-11-06 it answers 402 to unpaid calls, and no rating depends on it. |
 | **[H]** | Horizon, `https://horizon.stellar.org`. |
 | **[src]** | Contract source code at the given URL. |
 
@@ -32,25 +32,31 @@ Blend runs two deployments of the V2 pool code on mainnet. Each has its own pool
 
 blend-ui PR #238 (merged 2026-10-04) added v2.1 to Blend's app: "the audited v2 contracts with its own backstop", with backstop deposits reopened "for V2.1 pools only. V1 and V2 stay closed" **[src]**.
 
-Every source below is read for **each** deployment:
+A factory records every pool it deployed, but only answers for one address at a time (`is_pool`); it cannot be listed. So the list is built from the factory's `deploy` events, and every source below is read for **each** deployment:
 
-| Source | Result on 2026-11-01 | Used as |
+| Source | Result | Used as |
 |---|---|---|
-| **Factory `deploy` event history, indexed by Stellar Expert:** `GET /contract/{factory}/events?order=asc&limit=200&cursor=…` **[SE]** | V2: **12** `deploy` events, 2025-04-14 to 2026-08-26. v2.1: **1**, on 2026-09-30 (`CBAKAZ…`). Each event body is the pool's ScAddress. | **Primary** (authoritative) source |
+| **The pools already known.** The 13 ids in `KNOWN_BLEND_POOLS` (`src/lib/vigil/discovery.ts`) with the ledger that list is complete to, then the set the publisher stores after each run (KV `vigilKnownPools`) | 13 pools, complete to ledger 65,531,213 (2026-11-17 19:01 UTC) | Starting point |
+| **Factory `deploy` events over Soroban RPC** (`getEvents`), from the ledger after the known set's | The RPC keeps about 7 days (120,960 ledgers) and reads 10,000 ledgers per call; the scan follows the cursor to the latest ledger. No new pool since the known set. | **Completes the list**: when the RPC still has the first ledger after the known set's, the list is every pool |
+| Factory `deploy` event history, indexed by Stellar Expert: `GET /contract/{factory}/events?order=asc&limit=200&cursor=…` **[SE]** | On 2026-11-01, V2: **12** `deploy` events, 2025-04-14 to 2026-08-26. v2.1: **1**, on 2026-09-30 (`CBAKAZ…`). Since 2026-11-06 the API answers **402** (it charges per call) | Optional. Complete on its own when it answers |
 | Backstop `reward_zone()` | V2: `[]`, empty. v2.1: `[CBAKAZ…]` **[chain]** | Secondary source |
-| RPC `getEvents` on the factory | Only covers the RPC retention window, about 7 days. | Secondary source |
-| Curated `SCAN_BLEND_POOL_IDS` | 2 ids, both already found above | Fallback |
+| Curated `SCAN_BLEND_POOL_IDS` | 2 ids, both in the known set | Fallback |
 | Factory `is_pool(address)` **[chain]** | `true` for all 13, each on its own deployment's factory | **Verifier** for every candidate (a pool passes if any deployment's factory deployed it) |
+
+`coverage.sources` in the API output lists each source with its count, the ledgers it read and any error; `coverage.syncedLedger` is the ledger the list is complete to.
 
 Each pool's backstop is read from the pool's **own config** (`PoolV2` metadata `backstop`), so V2 and v2.1 pools are each measured against their own backstop, and every rating carries a `deployment` label.
 
-DefiLlama's Blend V2 adapter uses the same primary method, for the same reason. Its own comment says the reward zone "can be empty … so it alone is not a reliable enumeration source" (https://github.com/DefiLlama/DefiLlama-Adapters/blob/main/projects/blend-pools-v2/index.js) **[src]**.
+DefiLlama's Blend V2 adapter enumerates pools from the same Stellar Expert event history, for the same reason. Its own comment says the reward zone "can be empty … so it alone is not a reliable enumeration source" (https://github.com/DefiLlama/DefiLlama-Adapters/blob/main/projects/blend-pools-v2/index.js) **[src]**.
 
 Stellar Expert's metadata is consistent with this: it reports the factory with `events: 12` and `storage_entries: 13` **[SE]**. Our reading is that this is 12 per-pool records plus the instance; that split is an inference, not something Stellar Expert reports.
 
 **Coverage limits:**
 
-1. **Trusted indexer.** Stellar Expert is a third-party indexer. Any id it returns must still pass `is_pool` on-chain, so it cannot inject a non-factory contract. But a deploy it *missed* would also be missed by Vigil. If Stellar Expert is down, Vigil falls back to the RPC and curated sources, and the output sets `coverage.fallbackOnly = true`.
+1. **The list is complete only while runs are less than about 7 days apart.** A pool deployed after the known set's ledger is found from the factory's `deploy` events on the RPC, which keeps about 7 days. The publisher runs every 30 minutes and stores the ledger it has read to, so the next run starts there. If no run happens for longer than the RPC keeps, the ledgers between are gone: the known pools are still rated, the output sets `coverage.fallbackOnly = true` and names the missing ledgers, and `/ratings` says a recently deployed pool may be missing. It stays set until Stellar Expert's history answers once.
+   - **The outage that led to this (2026-11-06 to 2026-11-17).** Until 2026-11-17 the list came from Stellar Expert's index alone. From the run of 2026-11-06 15:01 UTC that API answered 402, and the fallback found 3 pools instead of 13: Orbit, Etherfuse, Forex, Solv, Spectra PTs and the five pools that never launched were neither rated nor published for 11 days (the registry's ratings for them aged out, so RiskGate refused deposits into them), and the DeFindex Etherfuse strategy was shown as E 0 because its pool was not read. `/ratings` did not show that the run was a fallback. The RPC source that should have caught new pools was also broken: it stopped at the first page of `getEvents`, which covers 10,000 ledgers, so it only ever read the oldest 14 hours of the 7-day window.
+   - **What the built-in list rests on.** Stellar Expert's full history up to ledger 65,337,899 (its last answer, run 1793975537); both factories' events over RPC for ledgers 65,410,254 to 65,531,213, with no new pool; and for the 72,354 ledgers between, the deployment's own half-hourly runs, whose archived coverage shows no new pool but which did not record a failed event read.
+   - **Contract code is recognised by its wasm hash, read from the chain.** Stellar Expert also supplied each oracle contract's verified source repository. The two aggregator builds it had verified (Blend's and YieldBlox's) are now pinned by hash in `VERIFIED_WASM` (`src/lib/vigil/oracle.ts`). RedStone's adapter, the Solv pool's oracle, is not pinned (its instance was written after Stellar Expert's last answer), so while the API is closed its prices are read as an unidentified source; Solv holds under $10K and is not rated either way. A deployer's address still comes only from Stellar Expert; it appears in a reason line, not in a score.
 2. **V2 and v2.1 factories only.** Blend V1 pools and Blend-code forks deployed outside these two factories are out of scope. A new Blend deployment has to be added to the configuration (`SCAN_POOL_FACTORY_V2_1_ID` / `SCAN_BACKSTOP_V2_1_ID` show the pattern). Until v2.2 Vigil covered only V2 and missed the v2.1 pool; an external review found it on 2026-11-01.
 3. **13 pools found, all 13 read: 5 graded and 8 not rated.** The 8 never launched or hold under $10K.
 
@@ -62,7 +68,7 @@ Stellar Expert's metadata is consistent with this: it reports the factory with `
 | Reserve `c_factor`, `l_factor`, `max_util`, `supply_cap`, `enabled`; supply and liabilities | Same as above. Supply is `b_supply·b_rate` and liabilities are `d_supply·d_rate` (`Reserve.totalSupplyFloat/totalLiabilitiesFloat`). |
 | Token symbol and classic asset | SAC `name()` (`CODE:ISSUER` or `native`) and `symbol()` **[chain]** |
 | Price per reserve | Pool oracle `lastprice(Stellar(asset))` and `decimals()`, read one asset at a time so one bad asset cannot hide the others **[chain]** |
-| Oracle contract type | WASM spec function list (`getContractWasmByContractId`) **[chain]**. Stellar Expert `creator`, `wasm`, and `validation.repository` **[SE]**. |
+| Oracle contract type | Wasm hash (the contract's instance entry) and WASM spec function list **[chain]**. Verified source repository: the wasm hash in `VERIFIED_WASM`, or Stellar Expert's `validation.repository` when its API answers **[SE]**. Stellar Expert `creator` **[SE]**, used in reason lines only. |
 | Aggregator routing | `oracles()`, `asset_configs()` (decoded from the raw ScMap), `base()`, `assets()`, `max_age()` **[chain]** |
 | Source feed identity | Known ids, plus `base()`, `assets()`, `resolution()`, `admin()` **[chain]** and the creator **[SE]** |
 | Opaque adapters (no config getters) | Source is *inferred* when the adapter returns the same `(price, timestamp)` as a known Reflector feed, read back to back. Marked `inferred: true`. |

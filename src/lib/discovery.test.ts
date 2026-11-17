@@ -1,5 +1,15 @@
 import { describe, it, expect } from "vitest";
-import { createPoolDiscovery, isDiscoveryCacheFresh, mergePoolIds, DISCOVERY_TTL_MS, type PoolSource } from "./discovery";
+import { Address, Contract, xdr } from "@stellar/stellar-sdk";
+import {
+  createPoolDiscovery,
+  isDiscoveryCacheFresh,
+  ledgerOfCursor,
+  mergePoolIds,
+  scanFactoryDeploys,
+  DISCOVERY_TTL_MS,
+  type EventsRpc,
+  type PoolSource,
+} from "./discovery";
 
 const FALLBACK = ["C_FALLBACK_A", "C_FALLBACK_B"];
 
@@ -82,5 +92,101 @@ describe("isDiscoveryCacheFresh", () => {
     expect(isDiscoveryCacheFresh(NOW - 4_000, NOW, customTtl)).toBe(true);
     expect(isDiscoveryCacheFresh(NOW - 5_000, NOW, customTtl)).toBe(false);
     expect(isDiscoveryCacheFresh(NOW - 6_000, NOW, customTtl)).toBe(false);
+  });
+});
+
+// ── scanFactoryDeploys ───────────────────────────────────────────────────────
+
+const FACTORY = "CDSYOAVXFY7SM5S64IZPPPYB4GVGGLMQVFREPSQQEZVIWXX5R23G4QSU";
+const POOL_A = "CAJJZSGMMM3PD7N33TAPHGBUGTB43OC73HVIK2L2G6BNGGGYOSSYBXBD";
+const POOL_B = "CCCCIQSDILITHMM7PBSLVDT5MISSY7R26MNZXCX4H7J5JQ5FPIYOGYFS";
+
+/** An event cursor at the end of `ledger`, as the RPC writes it. */
+const cursorAt = (ledger: number) => `${((BigInt(ledger) << 32n) | 0xffffffffn).toString().padStart(19, "0")}-4294967295`;
+
+function deployEvent(pool: string, ledger: number, topic = "deploy") {
+  return {
+    id: `${ledger}-1`,
+    type: "contract",
+    ledger,
+    ledgerClosedAt: "2026-11-17T00:00:00Z",
+    contractId: new Contract(FACTORY),
+    topic: [xdr.ScVal.scvSymbol(topic)],
+    value: new Address(pool).toScVal(),
+    txHash: "00",
+  };
+}
+
+/**
+ * An RPC that, like stellar-rpc, reads `window` ledgers per getEvents call and
+ * then hands back a cursor, whether or not it found an event.
+ */
+function fakeRpc(opts: { oldest: number; latest: number; window: number; events: ReturnType<typeof deployEvent>[] }) {
+  const calls: { startLedger?: number; cursor?: string }[] = [];
+  const server = {
+    getLatestLedger: async () => ({ sequence: opts.latest }),
+    getEvents: async (req: { startLedger?: number; cursor?: string; limit?: number }) => {
+      calls.push({ startLedger: req.startLedger, cursor: req.cursor });
+      const from = req.cursor ? ledgerOfCursor(req.cursor)! + 1 : req.startLedger!;
+      if (from < opts.oldest) throw new Error(`startLedger must be within the ledger range: ${opts.oldest} - ${opts.latest}`);
+      const to = Math.min(from + opts.window - 1, opts.latest);
+      const events = req.limit === 1 ? [] : opts.events.filter((e) => e.ledger >= from && e.ledger <= to);
+      return { events, cursor: cursorAt(to), latestLedger: opts.latest, oldestLedger: opts.oldest };
+    },
+  } as unknown as EventsRpc;
+  return { server, calls };
+}
+
+describe("ledgerOfCursor", () => {
+  it("reads the ledger out of an RPC event cursor", () => {
+    expect(ledgerOfCursor("0281453991500447743-4294967295")).toBe(65531113);
+    expect(ledgerOfCursor(cursorAt(65410124))).toBe(65410124);
+    expect(ledgerOfCursor("not-a-cursor")).toBeNull();
+  });
+});
+
+describe("scanFactoryDeploys", () => {
+  it("follows the cursor through empty pages to the latest ledger", async () => {
+    // A pool deployed 85,000 ledgers after the oldest retained one: nine empty pages come first.
+    const { server, calls } = fakeRpc({ oldest: 100_000, latest: 220_959, window: 10_000, events: [deployEvent(POOL_A, 185_000)] });
+    const scan = await scanFactoryDeploys(server, FACTORY);
+    expect(scan.pools).toEqual([POOL_A]);
+    expect(scan.startLedger).toBe(100_000);
+    expect(scan.endLedger).toBe(220_959);
+    expect(calls.length).toBe(1 + 13); // the probe, then 13 windows of 10,000 ledgers
+  });
+
+  it("starts at the ledger asked for and reads one page when the tip is close", async () => {
+    const { server, calls } = fakeRpc({ oldest: 100_000, latest: 220_959, window: 10_000, events: [deployEvent(POOL_A, 185_000), deployEvent(POOL_B, 220_900)] });
+    const scan = await scanFactoryDeploys(server, FACTORY, { fromLedger: 220_600 });
+    expect(scan).toEqual({ pools: [POOL_B], startLedger: 220_600, endLedger: 220_959 });
+    expect(calls.length).toBe(2);
+  });
+
+  it("reports the oldest retained ledger when the one asked for is gone", async () => {
+    const { server } = fakeRpc({ oldest: 100_000, latest: 105_000, window: 10_000, events: [] });
+    const scan = await scanFactoryDeploys(server, FACTORY, { fromLedger: 50_000 });
+    expect(scan).toEqual({ pools: [], startLedger: 100_000, endLedger: 105_000 });
+  });
+
+  it("looks back a set number of ledgers and ignores events that are not deploys", async () => {
+    const { server, calls } = fakeRpc({
+      oldest: 100_000,
+      latest: 220_959,
+      window: 10_000,
+      events: [deployEvent(POOL_A, 150_000), deployEvent(POOL_B, 200_000), deployEvent(POOL_A, 210_000, "set_admin")],
+    });
+    const scan = await scanFactoryDeploys(server, FACTORY, { lookback: 30_000 });
+    expect(scan.pools).toEqual([POOL_B]);
+    expect(scan.startLedger).toBe(190_959);
+    expect(calls.length).toBe(1 + 4);
+  });
+
+  it("stops when the RPC returns no cursor, taking the page as the end", async () => {
+    const server = {
+      getLatestLedger: async () => ({ sequence: 500 }),
+      getEvents: async () => ({ events: [], latestLedger: 500, oldestLedger: 100 }),
+    } as unknown as EventsRpc;
+    expect(await scanFactoryDeploys(server, FACTORY)).toEqual({ pools: [], startLedger: 100, endLedger: 500 });
   });
 });

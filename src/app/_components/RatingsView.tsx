@@ -63,7 +63,7 @@ interface RatingsResponse {
   computedAt: number;
   cachedAt: number;
   stale: boolean;
-  coverage: { poolsFound: number; rated: number; failed: { id: string; error: string }[] };
+  coverage: { poolsFound: number; rated: number; failed: { id: string; error: string }[]; fallbackOnly?: boolean };
   ratings: Rating[];
   methodology: string;
   error?: string;
@@ -503,7 +503,10 @@ export default function RatingsView() {
           <footer className="rt-foot">
             Computed {when(data.computedAt)} from mainnet: {data.coverage.rated} of {data.coverage.poolsFound} pools
             {data.coverage.failed.length ? ` (${data.coverage.failed.length} unreadable)` : ""}, engine{" "}
-            {data.engineVersion}.{data.stale && " The latest refresh failed, so this is the last good run."} Read the{" "}
+            {data.engineVersion}.{data.stale && " The latest refresh failed, so this is the last good run."}
+            {data.coverage.fallbackOnly &&
+              " This run could not confirm the pool list is complete, so a pool deployed in the last few days may be missing."}{" "}
+            Read the{" "}
             <a href={data.methodology} target="_blank" rel="noreferrer">
               methodology
             </a>{" "}

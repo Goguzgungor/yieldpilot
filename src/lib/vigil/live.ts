@@ -1,5 +1,5 @@
 /**
- * Live, read-only mainnet readers for the Vigil engine (Soroban RPC + Horizon + Stellar Expert).
+ * Live, read-only mainnet readers for the Vigil engine (Soroban RPC + Horizon; Stellar Expert when it answers).
  *
  * Nothing here signs or submits: every contract read is a `simulateTransaction` of a view call
  * from a dummy source account. Tests never import this module — they inject fakes into engine.ts.
@@ -7,7 +7,7 @@
 import { PoolV2, type Network } from "@blend-capital/blend-sdk";
 import { Account, Address, Contract, TransactionBuilder, contract, rpc, scValToNative, xdr } from "@stellar/stellar-sdk";
 import type { ContractInfo, AggregatorConfig } from "./oracle";
-import { attributeSources, classifyPoolOracle, isAggregatorInterface } from "./oracle";
+import { attributeSources, classifyPoolOracle, isAggregatorInterface, verifiedRepoOf } from "./oracle";
 import type { AssetKey, BackstopSnapshot, DexDepth, PoolSnapshot, ReserveSnapshot } from "./types";
 import { SDEX_PRICED_KINDS } from "./types";
 import { THRESHOLDS } from "./score";
@@ -111,10 +111,32 @@ export function createLiveReaders(cfg: LiveConfig) {
     return infoCache.get(id)!;
   }
 
+  /** The hash of a contract's wasm, from its instance entry; null for a built-in (asset) contract. */
+  async function readWasmHash(id: string): Promise<string | null> {
+    const key = xdr.LedgerKey.contractData(
+      new xdr.LedgerKeyContractData({
+        contract: new Address(id).toScAddress(),
+        key: xdr.ScVal.scvLedgerKeyContractInstance(),
+        durability: xdr.ContractDataDurability.persistent(),
+      }),
+    );
+    const res = await server.getLedgerEntries(key);
+    const exec = res.entries[0]?.val.contractData().val().instance().executable();
+    return exec && exec.switch().name === "contractExecutableWasm" ? exec.wasmHash().toString("hex") : null;
+  }
+
   async function loadContractInfo(id: string): Promise<ContractInfo> {
+    // The code hash and the interface come from the chain. Only the creator
+    // needs the indexer, and a source repository Vigil has not pinned by hash.
+    let wasmHash: string | null = null;
+    try {
+      wasmHash = await readWasmHash(id);
+    } catch {
+      wasmHash = null;
+    }
     let functions: string[] | null = null;
     try {
-      const wasm = await server.getContractWasmByContractId(id);
+      const wasm = wasmHash ? await server.getContractWasmByHash(Buffer.from(wasmHash, "hex")) : await server.getContractWasmByContractId(id);
       functions = contract.Spec.fromWasm(wasm)
         .funcs()
         .map((f) => f.name().toString());
@@ -122,8 +144,7 @@ export function createLiveReaders(cfg: LiveConfig) {
       functions = null;
     }
     let creator: string | null = null;
-    let wasmHash: string | null = null;
-    let verifiedRepo: string | null = null;
+    let verifiedRepo: string | null = verifiedRepoOf(wasmHash);
     try {
       const se = (await fetchJson(`https://api.stellar.expert/explorer/public/contract/${id}`)) as {
         creator?: string;
@@ -131,10 +152,10 @@ export function createLiveReaders(cfg: LiveConfig) {
         validation?: { repository?: string };
       };
       creator = se.creator ?? null;
-      wasmHash = se.wasm ?? null;
-      verifiedRepo = se.validation?.repository ?? null;
+      wasmHash = wasmHash ?? se.wasm ?? null;
+      verifiedRepo = se.validation?.repository ?? verifiedRepo;
     } catch {
-      /* metadata is best-effort */
+      /* the indexer is optional */
     }
     const has = (f: string) => functions?.includes(f) ?? false;
     const base = has("base") ? toAssetKey(await trySim(id, "base")) : null;

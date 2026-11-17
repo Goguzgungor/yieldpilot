@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { decodeDeployBody, discoverBlendPools, functionSource, stellarExpertDeploySource } from "./discovery";
+import {
+  KNOWN_BLEND_POOLS,
+  decodeDeployBody,
+  deployEventsSource,
+  discoverBlendPools,
+  functionSource,
+  knownPoolsSource,
+  mergeKnownPools,
+  nextKnownPools,
+  stellarExpertDeploySource,
+  type PoolIdSource,
+} from "./discovery";
 import { cid } from "./testkit";
 
 // Real mainnet PoolFactory `deploy` event bodies (Stellar Expert, factory CDSYOAVX…).
@@ -89,5 +100,134 @@ describe("discoverBlendPools", () => {
     expect(r.poolIds).toEqual([a]);
     expect(r.fallbackOnly).toBe(true);
     expect(r.sources[0]).toMatchObject({ name: "factory", count: 0, error: "503" });
+  });
+});
+
+describe("known pools + deploy events (no indexer)", () => {
+  const a = cid("pool-a");
+  const b = cid("pool-b");
+  const fresh = cid("pool-new");
+  const known = { ids: [a, b], syncedLedger: 1000 };
+  const indexerDown = (scope: string): PoolIdSource => ({
+    ...functionSource(`stellar-expert:${scope}`, async () => {
+      throw new Error("402 Payment Required");
+    }, true),
+    scope,
+  });
+  const events = (scope: string, scan: { pools: string[]; startLedger: number; endLedger: number }) =>
+    deployEventsSource({ scope, known, scan: async () => scan });
+
+  it("is complete without the indexer when the events since the known ledger are all on the RPC", async () => {
+    const seen: number[] = [];
+    const r = await discoverBlendPools({
+      sources: [
+        deployEventsSource({ scope: "v2", known, scan: async (from) => (seen.push(from), { pools: [fresh], startLedger: from, endLedger: 1500 }) }),
+        indexerDown("v2"),
+        events("v2.1", { pools: [], startLedger: 1001, endLedger: 1498 }),
+        indexerDown("v2.1"),
+        knownPoolsSource(known),
+      ],
+      verifier: { isPool: async () => true },
+    });
+    expect(seen).toEqual([1001]); // the scan starts at the first ledger after the known set
+    expect(r.poolIds).toEqual([fresh, a, b]);
+    expect(r.fallbackOnly).toBe(false);
+    expect(r.syncedLedger).toBe(1498); // the earliest ledger any deployment was read to
+    expect(r.sources.map((x) => [x.name, x.count, !!x.error])).toEqual([
+      ["rpc:factory-deploy-events:v2", 1, false],
+      ["stellar-expert:v2", 0, true],
+      ["rpc:factory-deploy-events:v2.1", 0, false],
+      ["stellar-expert:v2.1", 0, true],
+      ["known-pools", 2, false],
+      ["curated", 0, false],
+    ]);
+    expect(r.sources[0].note).toBe("ledgers 1001-1500");
+  });
+
+  it("says so when the RPC no longer has the ledgers after the known set", async () => {
+    const r = await discoverBlendPools({
+      sources: [
+        events("v2", { pools: [], startLedger: 1001, endLedger: 9000 }),
+        events("v2.1", { pools: [], startLedger: 5000, endLedger: 9000 }),
+        knownPoolsSource(known),
+      ],
+      verifier: { isPool: async () => true },
+    });
+    expect(r.poolIds).toEqual([a, b]); // the known pools are still rated
+    expect(r.fallbackOnly).toBe(true);
+    expect(r.syncedLedger).toBeUndefined();
+    expect(r.sources[1].note).toBe("ledgers 5000-9000; 1001-4999 are no longer on the RPC");
+  });
+
+  it("needs every deployment complete, not just one", async () => {
+    const r = await discoverBlendPools({
+      sources: [
+        { ...functionSource("stellar-expert:v2", async () => [a], true), scope: "v2" },
+        indexerDown("v2.1"),
+        knownPoolsSource(known),
+      ],
+      verifier: { isPool: async () => true },
+    });
+    expect(r.fallbackOnly).toBe(true);
+  });
+
+  it("is complete through the indexer alone, and closes an RPC gap when it answers", async () => {
+    const r = await discoverBlendPools({
+      sources: [
+        events("v2", { pools: [], startLedger: 5000, endLedger: 9000 }),
+        { ...functionSource("stellar-expert:v2", async () => [a, b, fresh], true), scope: "v2" },
+        knownPoolsSource(known),
+      ],
+      verifier: { isPool: async () => true },
+    });
+    expect(r.fallbackOnly).toBe(false);
+    expect(r.poolIds).toEqual([a, b, fresh]);
+    expect(r.syncedLedger).toBeUndefined(); // no ledger is known for the indexer's answer
+  });
+
+  it("keeps known pools when is_pool cannot be asked, and drops one it denies", async () => {
+    const unreachable = await discoverBlendPools({ sources: [knownPoolsSource(known)], verifier: { isPool: async () => null } });
+    expect(unreachable.poolIds).toEqual([a, b]);
+    const denied = await discoverBlendPools({ sources: [knownPoolsSource(known)], verifier: { isPool: async (id) => id !== b } });
+    expect(denied.poolIds).toEqual([a]);
+    expect(denied.rejected).toEqual([b]);
+  });
+});
+
+describe("the stored known-pool set", () => {
+  const a = cid("pool-a");
+  const b = cid("pool-b");
+  const c = cid("pool-c");
+  const builtIn = { ids: [a, b], syncedLedger: 1000 };
+
+  it("starts from the built-in list when nothing is stored or the stored value is unusable", () => {
+    expect(mergeKnownPools(null, builtIn)).toEqual(builtIn);
+    expect(mergeKnownPools({ ids: "x", syncedLedger: 5 } as never, builtIn)).toEqual(builtIn);
+  });
+
+  it("never loses a built-in pool or moves the ledger back", () => {
+    expect(mergeKnownPools({ ids: [c], syncedLedger: 400 }, builtIn)).toEqual({ ids: [a, b, c], syncedLedger: 1000 });
+    expect(mergeKnownPools({ ids: [a, c], syncedLedger: 2000 }, builtIn)).toEqual({ ids: [a, b, c], syncedLedger: 2000 });
+  });
+
+  it("adds only pools is_pool confirmed, and moves the ledger only after a complete run", async () => {
+    const run = (verified: boolean | null, complete: boolean) =>
+      discoverBlendPools({
+        sources: [
+          deployEventsSource({ scope: "v2", known: builtIn, scan: async (from) => ({ pools: [c], startLedger: complete ? from : from + 50, endLedger: 3000 }) }),
+          knownPoolsSource(builtIn),
+        ],
+        verifier: { isPool: async () => verified },
+      });
+    expect(nextKnownPools(builtIn, await run(true, true))).toEqual({ ids: [a, b, c], syncedLedger: 3000 });
+    expect(nextKnownPools(builtIn, await run(true, false))).toEqual({ ids: [a, b, c], syncedLedger: 1000 });
+    expect(nextKnownPools(builtIn, await run(null, true))).toEqual({ ids: [a, b], syncedLedger: 3000 });
+  });
+
+  it("ships the 13 pools of Blend's two factories", () => {
+    expect(KNOWN_BLEND_POOLS.ids.length).toBe(13);
+    expect(new Set(KNOWN_BLEND_POOLS.ids).size).toBe(13);
+    expect(KNOWN_BLEND_POOLS.ids.every((id) => /^C[A-Z2-7]{55}$/.test(id))).toBe(true);
+    expect(KNOWN_BLEND_POOLS.syncedLedger).toBeGreaterThan(65_000_000);
   });
 });

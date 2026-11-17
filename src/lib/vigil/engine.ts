@@ -105,6 +105,8 @@ export function toRatingsJson(r: EngineResult) {
       rejected: r.discovery.rejected,
       unverified: r.discovery.candidates.filter((c) => c.verified !== true).map((c) => c.poolId),
       fallbackOnly: r.discovery.fallbackOnly,
+      /** The ledger the pool list is complete to (absent when it could not be shown complete). */
+      ...(r.discovery.syncedLedger !== undefined ? { syncedLedger: r.discovery.syncedLedger } : {}),
     },
     ratings: [...r.pools, ...r.defindex],
     /** Each pool's snapshot, with its order books replaced by their hash. */

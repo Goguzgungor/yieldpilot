@@ -14,14 +14,14 @@
  */
 import type { AssetKey, AssetPriceSource, OracleSourceKind } from "./types";
 
-/** Facts about an oracle-like contract, as read from chain + Stellar Expert. */
+/** Facts about an oracle-like contract: interface and wasm hash from the chain, creator from Stellar Expert when it answers. */
 export interface ContractInfo {
   id: string;
   /** Exported function names from the contract WASM spec; null when unreadable. */
   functions: string[] | null;
   creator?: string | null;
   wasmHash?: string | null;
-  /** Source repository from Stellar Expert's contract validation, if verified. */
+  /** Verified source repository: Stellar Expert's contract validation, or {@link VERIFIED_WASM} by wasm hash. */
   verifiedRepo?: string | null;
   base?: AssetKey | null;
   admin?: string | null;
@@ -56,6 +56,33 @@ export const REFLECTOR_DEPLOYER = "GDLMOS3LF2CRRFCWDJ6TX3YIEYBBTZGAF3BSSEXOXFZWY
 export const REFLECTOR_WASM_HASHES: ReadonlySet<string> = new Set([
   "25fc306065cbb9b05461db78ec259802cb916053ba5b3ab911b0a72dd1a81439",
 ]);
+
+/**
+ * Contract code whose source repository is known, by wasm hash. The hash is
+ * read from the chain on every run, so recognising this code does not depend
+ * on an indexer being reachable: while Stellar Expert's API was closed (402
+ * from 2026-11-06) every aggregator was read as "aggregator_compatible".
+ *
+ * Each entry is a hash Stellar Expert listed with a verified source when it
+ * last answered (run 1793975537, 2026-11-06 14:32 UTC), on contracts whose
+ * instance has not been written since; the repository is the one the wasm
+ * names in its own `source_repo` metadata. A contract that only declares a
+ * `source_repo` is not listed: anyone can write that field, so it is not
+ * evidence. RedStone's adapter (the Solv pool's oracle) is left out because
+ * its instance was written after that run; it is recognised again when the
+ * indexer answers.
+ */
+export const VERIFIED_WASM: Readonly<Record<string, { repo: string }>> = {
+  // Blend's oracle aggregator (Fixed, New Fixed, Fixed v2.1, the YieldBlox pool that never launched).
+  "41df04894bf2d8291492326f7a6ab9c90a90cc9828e31990ce8aeeab42680bfd": { repo: "https://github.com/blend-capital/oracle-aggregator" },
+  // YieldBlox's build of it (the YieldBlox pool).
+  "8cf43882ff2e6757bef1900973ab26efb1b42b832a640a320a9b881fa501cf76": { repo: "https://github.com/yieldblox/oracle-aggregator" },
+};
+
+/** The verified source repository of a wasm hash, if Vigil knows one. */
+export function verifiedRepoOf(wasmHash: string | null | undefined): string | null {
+  return (wasmHash && VERIFIED_WASM[wasmHash]?.repo) || null;
+}
 
 /** Feeds identified from on-chain reads; see docs/vigil/methodology.md §Data sources. */
 export const KNOWN_FEEDS: Readonly<Record<string, FeedClass>> = {
@@ -121,7 +148,8 @@ export function classifyFeed(info: ContractInfo): FeedClass {
     return {
       kind: "issuer_push",
       label: "operator-set push oracle",
-      evidence: `non-Reflector deployer${info.creator ? ` ${info.creator.slice(0, 8)}…` : ""}; exports set_price${admin}`,
+      // The creator comes from the indexer; without it the wasm hash still shows the code is not Reflector's.
+      evidence: `${info.creator ? `non-Reflector deployer ${info.creator.slice(0, 8)}…` : info.wasmHash ? "not Reflector's wasm" : "deployer not read"}; exports set_price${admin}`,
     };
   }
   return { kind: "opaque", label: "unidentified oracle", evidence: `no known interface${fns.length ? ` (fns: ${fns.slice(0, 6).join(",")}…)` : ""}` };

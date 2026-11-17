@@ -4,21 +4,30 @@
  * pool of every Blend deployment + the configured DeFindex strategies (~90 s),
  * so callers cache the result (see runtime.ts `getRatings`).
  */
-import { createBlendOnchainPoolSource } from "../discovery";
+import { scanFactoryDeploys } from "../discovery";
+import { createRpcServer } from "../rpcServer";
 import { historyFor, mergeDepthHistory, samplesOf, type DepthHistory, type DepthHistoryStore } from "./depthHistory";
-import { functionSource, stellarExpertDeploySource } from "./discovery";
+import {
+  deployEventsSource,
+  functionSource,
+  knownPoolsSource,
+  mergeKnownPools,
+  nextKnownPools,
+  stellarExpertDeploySource,
+  type KnownPoolsStore,
+} from "./discovery";
 import { runVigil, toRatingsJson, type DefindexStrategyRef, type EngineResult } from "./engine";
 import { createLiveReaders, type BlendDeployment } from "./live";
 import { mergeUtilizationHistory, utilizationHistoryFor, type UtilizationHistory, type UtilizationHistoryStore } from "./utilizationHistory";
 
-export type { BlendDeployment, DepthHistoryStore, UtilizationHistoryStore };
+export type { BlendDeployment, DepthHistoryStore, KnownPoolsStore, UtilizationHistoryStore };
 
 export interface LiveRatingsConfig {
   rpcUrl: string;
   passphrase: string;
   /** Every Blend deployment to enumerate (pool factory + its backstop). */
   deployments: BlendDeployment[];
-  /** Curated pool ids, used if discovery finds nothing. */
+  /** Curated pool ids, added to whatever discovery finds. */
   curatedPoolIds: string[];
   defindexStrategies: DefindexStrategyRef[];
   /** Delay between RPC calls (rate-limit friendliness). */
@@ -30,6 +39,12 @@ export interface LiveRatingsConfig {
   depthHistory?: DepthHistoryStore;
   /** Where earlier reserve reads are kept for HR10's window. Without one, HR10 sees the current read only (v2.4 behaviour). */
   utilizationHistory?: UtilizationHistoryStore;
+  /**
+   * Where the pools found so far are kept, with the ledger that list is
+   * complete to. Without one, every run starts from the built-in list
+   * (KNOWN_BLEND_POOLS) and can only add what the RPC's 7 days of events show.
+   */
+  knownPools?: KnownPoolsStore;
   log?(msg: string): void;
 }
 
@@ -42,21 +57,35 @@ export async function runLiveVigil(cfg: LiveRatingsConfig): Promise<EngineResult
     deployments: cfg.deployments,
     callDelayMs: cfg.callDelayMs ?? 120,
   });
-  // Per deployment: the factory's full deploy history (authoritative) plus its
-  // backstop reward zone and recent deploy events.
-  const sources = cfg.deployments.flatMap((dep) => {
-    const rpcSource = createBlendOnchainPoolSource({
-      rpcUrl: cfg.rpcUrl,
-      networkPassphrase: cfg.passphrase,
-      backstopId: dep.backstopId,
-      factoryId: dep.factoryId,
-    });
-    const deploys = stellarExpertDeploySource({ factoryId: dep.factoryId, fetchJson: live.fetchJson });
-    return [
-      { ...deploys, name: `${deploys.name}:${dep.name}` },
-      functionSource(`rpc:backstop-reward-zone+recent-deploy-events:${dep.name}`, () => rpcSource.listPools()),
-    ];
-  });
+  // The pools known so far, and the ledger that list is complete to.
+  let stored = null;
+  if (cfg.knownPools) {
+    try {
+      stored = await cfg.knownPools.load();
+    } catch (e) {
+      cfg.log?.(`known pools unavailable, starting from the built-in list: ${(e as Error).message}`);
+    }
+  }
+  const known = mergeKnownPools(stored);
+  // Per deployment: the factory's deploy events since that ledger (RPC), its
+  // backstop reward zone, and its whole deploy history from the indexer when
+  // the indexer answers. Then the known pools themselves.
+  const rpcServer = createRpcServer(cfg.rpcUrl);
+  const sources = [
+    ...cfg.deployments.flatMap((dep) => {
+      const deploys = stellarExpertDeploySource({ factoryId: dep.factoryId, fetchJson: live.fetchJson });
+      return [
+        deployEventsSource({
+          scope: dep.name,
+          known,
+          scan: (fromLedger) => scanFactoryDeploys(rpcServer, dep.factoryId, { fromLedger }),
+        }),
+        { ...deploys, name: `${deploys.name}:${dep.name}`, scope: dep.name },
+        functionSource(`rpc:backstop-reward-zone:${dep.name}`, () => live.rewardZone(dep.backstopId)),
+      ];
+    }),
+    knownPoolsSource(known),
+  ];
   // Books from earlier runs are attached to each snapshot; this run's books are
   // added to the store afterwards, so a pool is never compared with itself.
   let past: DepthHistory = {};
@@ -91,6 +120,17 @@ export async function runLiveVigil(cfg: LiveRatingsConfig): Promise<EngineResult
     },
     { defindexStrategies: cfg.defindexStrategies },
   );
+  if (cfg.knownPools) {
+    const next = nextKnownPools(known, result.discovery);
+    const changed = next.syncedLedger !== stored?.syncedLedger || next.ids.length !== stored?.ids.length;
+    if (changed) {
+      try {
+        await cfg.knownPools.save(next);
+      } catch (e) {
+        cfg.log?.(`known pools not saved: ${(e as Error).message}`);
+      }
+    }
+  }
   if (cfg.depthHistory) {
     const fresh = Object.values(result.snapshots).flatMap(samplesOf);
     try {
