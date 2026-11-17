@@ -759,6 +759,9 @@ export async function getRatings(opts: { refresh?: boolean } = {}): Promise<Cach
     passphrase: rt.cfg.scanNetworkPassphrase,
     deployments: rt.cfg.scanBlendDeployments,
     curatedPoolIds: rt.cfg.scanBlendPoolIds,
+    // One line per step in the function's log: a run has 300 s, and this is the
+    // only record of where they went.
+    log: (m) => console.log(`[vigil] ${m}`),
     // The pools found so far and the ledger that list is complete to, so the
     // next run only has to read the deploy events since.
     knownPools: {

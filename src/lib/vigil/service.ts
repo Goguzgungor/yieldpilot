@@ -73,7 +73,7 @@ export async function runLiveVigil(cfg: LiveRatingsConfig): Promise<EngineResult
   const rpcServer = createRpcServer(cfg.rpcUrl);
   const sources = [
     ...cfg.deployments.flatMap((dep) => {
-      const deploys = stellarExpertDeploySource({ factoryId: dep.factoryId, fetchJson: live.fetchJson });
+      const deploys = stellarExpertDeploySource({ factoryId: dep.factoryId, fetchJson: live.indexerJson });
       return [
         deployEventsSource({
           scope: dep.name,
@@ -104,6 +104,7 @@ export async function runLiveVigil(cfg: LiveRatingsConfig): Promise<EngineResult
       cfg.log?.(`utilization history unavailable, HR10 on the current read only: ${(e as Error).message}`);
     }
   }
+  const startedAt = Date.now();
   const result = await runVigil(
     {
       sources,
@@ -120,6 +121,7 @@ export async function runLiveVigil(cfg: LiveRatingsConfig): Promise<EngineResult
     },
     { defindexStrategies: cfg.defindexStrategies },
   );
+  cfg.log?.(`run done in ${Math.round((Date.now() - startedAt) / 1000)} s: ${result.pools.length} pools, ${result.failures.length} failed`);
   if (cfg.knownPools) {
     const next = nextKnownPools(known, result.discovery);
     const changed = next.syncedLedger !== stored?.syncedLedger || next.ids.length !== stored?.ids.length;

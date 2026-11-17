@@ -52,9 +52,12 @@ export function createLiveReaders(cfg: LiveConfig) {
   const usdc = cfg.usdcClassic ?? MAINNET_USDC;
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+  /** No single HTTP read may hold a run up: the function that runs it has 300 s in all. */
+  const HTTP_TIMEOUT_MS = 10_000;
+
   async function fetchJson(url: string): Promise<unknown> {
     for (let attempt = 0; attempt < 6; attempt++) {
-      const res = await doFetch(url);
+      const res = await doFetch(url, { signal: AbortSignal.timeout(HTTP_TIMEOUT_MS) });
       if (res.status === 429 || res.status >= 500) {
         await sleep(1500 * (attempt + 1));
         continue;
@@ -63,6 +66,24 @@ export function createLiveReaders(cfg: LiveConfig) {
       return res.json();
     }
     throw new Error(`rate-limited: ${url}`);
+  }
+
+  /**
+   * Stellar Expert, which is optional: one attempt, no retries, and after the
+   * first failure of a run it is not asked again. Its API charges per call
+   * (402) since 2026-11-06, and a run asks it about every oracle contract.
+   */
+  let indexerOff: string | null = null;
+  async function indexerJson(url: string): Promise<unknown> {
+    if (indexerOff) throw new Error(`not asked again this run (${indexerOff})`);
+    try {
+      const res = await doFetch(url, { signal: AbortSignal.timeout(HTTP_TIMEOUT_MS) });
+      if (!res.ok) throw new Error(`${res.status} ${url}`);
+      return await res.json();
+    } catch (e) {
+      indexerOff = (e instanceof Error ? e.message : String(e)).split(" ")[0];
+      throw e;
+    }
   }
 
   /** Simulate a read-only call. Returns the raw retval, or throws with the host error. */
@@ -146,7 +167,7 @@ export function createLiveReaders(cfg: LiveConfig) {
     let creator: string | null = null;
     let verifiedRepo: string | null = verifiedRepoOf(wasmHash);
     try {
-      const se = (await fetchJson(`https://api.stellar.expert/explorer/public/contract/${id}`)) as {
+      const se = (await indexerJson(`https://api.stellar.expert/explorer/public/contract/${id}`)) as {
         creator?: string;
         wasm?: string;
         validation?: { repository?: string };
@@ -468,7 +489,7 @@ export function createLiveReaders(cfg: LiveConfig) {
     }
   }
 
-  return { snapshot, verifier, rewardZone, readStrategy, fetchJson, readContractInfo };
+  return { snapshot, verifier, rewardZone, readStrategy, fetchJson, indexerJson, readContractInfo };
 }
 
 /** Blend v2 backstop threshold (pool/src/pool/status.rs calc_pool_backstop_threshold): floor(blnd)^4 · floor(usdc) ≥ 1e25. */
