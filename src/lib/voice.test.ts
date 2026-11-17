@@ -18,6 +18,14 @@ describe("agentStatus", () => {
     expect(s.voice).toMatch(/funds are not affected/);
   });
 
+  it("claims nothing about the pools while the first read is in flight", () => {
+    // no pools have arrived yet: "no pool clears the cap" or "0 pools" would be false
+    const s = agentStatus({ ...base, loading: true, poolCount: 0, protocols: [], activity: [], routeVoice: "No pool clears the risk cap right now, so the agent holds." });
+    expect(s.state).toBe("READING");
+    expect(s.voice).toBe("Reading the latest survey of Stellar's USDC pools.");
+    expect(agentStatus({ ...base, loading: true, offline: true, activity: [] }).state).toBe("OFFLINE");
+  });
+
   it("reports the first survey on a cold start", () => {
     const s = agentStatus({ ...base, coldStart: true, activity: [] });
     expect(s.state).toBe("SURVEYING");

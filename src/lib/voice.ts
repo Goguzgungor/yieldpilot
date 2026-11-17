@@ -4,7 +4,7 @@
 
 export interface ActivityRow { ts: number; kind: string; message: string; meta: string | null }
 
-export type AgentState = "SURVEYING" | "SCANNING" | "SUPPLYING" | "HOLDING" | "OFFLINE";
+export type AgentState = "READING" | "SURVEYING" | "SCANNING" | "SUPPLYING" | "HOLDING" | "OFFLINE";
 export interface AgentStatus { state: AgentState; voice: string; hash?: string }
 
 /** How long a scan or a supply stays "the current moment" before the agent reads as holding. */
@@ -66,6 +66,8 @@ export function agentStatus(i: {
   activity: ActivityRow[];
   nowSec: number;
   offline: boolean;
+  /** The first read of the page has not come back yet: nothing is known, so nothing is claimed. */
+  loading?: boolean;
   coldStart: boolean;
   rationale: string | null;
   /** The standing route sentence (see routeVoice); preferred over the rationale while holding. */
@@ -75,6 +77,9 @@ export function agentStatus(i: {
 }): AgentStatus {
   if (i.offline) {
     return { state: "OFFLINE", voice: "Lost contact with the agent. Your funds are not affected; the page reconnects on its own." };
+  }
+  if (i.loading) {
+    return { state: "READING", voice: "Reading the latest survey of Stellar's USDC pools." };
   }
   if (i.coldStart) {
     return { state: "SURVEYING", voice: "Surveying Stellar for the first time. The range appears as each pool is read." };

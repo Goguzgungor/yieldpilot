@@ -66,7 +66,9 @@ export default function PlateApp() {
   const registered = onboarding.registered || null;
   const cold = !data.loading && data.scanUpdatedAt == null && data.pools.length === 0;
   const offline = data.lastOkAt ? now - data.lastOkAt > OFFLINE_AFTER_MS : now - mountedAt.current > OFFLINE_AFTER_MS;
-  const phase: PlatePhase = offline ? "offline" : cold ? "cold" : "live";
+  // "loading" is the few seconds before the first scan answers: the page knows
+  // nothing yet, so it shows placeholders instead of "0 pools" and an empty figure.
+  const phase: PlatePhase = offline ? "offline" : data.loading ? "loading" : cold ? "cold" : "live";
 
   // the route is the best eligible pool — the same rule the agent decides by
   const route = useMemo(() => {
@@ -93,6 +95,7 @@ export default function PlateApp() {
     activity: data.activity,
     nowSec: now / 1000,
     offline,
+    loading: data.loading,
     coldStart: cold,
     rationale,
     routeVoice: standing,
@@ -169,19 +172,20 @@ export default function PlateApp() {
     view = <HistoryView txs={myTxs} onBack={home} />;
   } else if (!wallet.address) {
     viewKey = "visitor";
-    view = <VisitorView route={route} installed={wallet.installed} connecting={wallet.connecting} error={wallet.error} onConnect={wallet.connect} agent={agent} />;
+    view = <VisitorView route={route} loading={data.loading} installed={wallet.installed} connecting={wallet.connecting} error={wallet.error} onConnect={wallet.connect} agent={agent} />;
   } else if (onboarding.registered === false) {
     viewKey = "setup";
     view = <SetupView onboarding={onboarding} network={wallet.network} />;
   } else if (registered) {
     viewKey = "holder";
-    view = <HolderView supplied={supplied} idle={idle} route={route} riskCap={data.riskCap} cold={cold} txs={myTxs} agent={agent} />;
+    view = <HolderView supplied={supplied} idle={idle} route={route} riskCap={data.riskCap} loading={data.loading} cold={cold} txs={myTxs} agent={agent} />;
   } else {
     viewKey = "checking";
     view = <CheckingView agent={agent} />;
   }
 
   let caption: React.ReactNode = <><b>Fig. 1</b> — USDC yield on Stellar, live</>;
+  if (phase === "loading") caption = <><b>Fig. 1</b> — reading the latest survey</>;
   if (phase === "cold") caption = <><b>Fig. 1</b> — first survey in progress</>;
   if (phase === "offline") caption = <><b>Fig. 1</b> — last known survey{data.scanUpdatedAt ? ` · ${formatTimeAgo(data.scanUpdatedAt / 1000, now)}` : ""}</>;
   if (mode === "pool" && selected) caption = <><b>Fig. 1</b> — {routeName(selected)} selected · Esc to return</>;

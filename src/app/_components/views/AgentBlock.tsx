@@ -21,6 +21,14 @@ export default function AgentBlock({ status, phase, now, nextTickAt, scanUpdated
   let meta: React.ReactNode;
   if (phase === "offline") {
     meta = <>Last contact <b>{lastOkAt ? formatTimeAgo(lastOkAt / 1000, now) : "never"}</b> · retrying every 3s</>;
+  } else if (phase === "loading") {
+    // nothing has been read yet: a placeholder line, never "0 pools"
+    meta = (
+      <>
+        <span className="sr-only">Loading the latest survey</span>
+        <span className="skel skel-meta" aria-hidden="true" />
+      </>
+    );
   } else if (phase === "cold") {
     meta = <>First survey · <b>about a minute</b></>;
   } else {
@@ -33,7 +41,7 @@ export default function AgentBlock({ status, phase, now, nextTickAt, scanUpdated
     );
   }
   return (
-    <div className="agent">
+    <div className="agent" aria-busy={phase === "loading"}>
       <h6 className="k">
         Agent <span className="state"><i />{status.state}</span>
       </h6>

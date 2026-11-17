@@ -13,11 +13,13 @@ const big = (s: string | null | undefined) => {
 };
 
 /** Holder: the one number that matters, where it works, and the last supplies. */
-export function HolderView({ supplied, idle, route, riskCap, cold, txs, agent }: {
+export function HolderView({ supplied, idle, route, riskCap, loading, cold, txs, agent }: {
   supplied: string;
   idle: string | null;
   route: ApiScoredPool | null;
   riskCap: number;
+  /** The first scan has not come back yet, so there is no route to name. */
+  loading: boolean;
   cold: boolean;
   txs: AgentTx[];
   agent: ReactNode;
@@ -26,7 +28,8 @@ export function HolderView({ supplied, idle, route, riskCap, cold, txs, agent }:
   const where = route ? <b>{routeName(route).replace(/ /g, " ")}</b> : null;
   const apy = route ? <b>{formatApy(route.apyBps)}</b> : null;
   let lede: ReactNode;
-  if (cold) lede = <>{usdc2((s + i).toString())} USDC waits in your smart account until the first survey finishes.</>;
+  if (loading) lede = <><span className="sr-only">Loading the current route</span><span className="skel skel-lede" aria-hidden="true" /></>;
+  else if (cold) lede = <>{usdc2((s + i).toString())} USDC waits in your smart account until the first survey finishes.</>;
   else if (!route) lede = <>No pool clears your risk cap of <b>{riskCap}</b> right now, so the agent holds.</>;
   else if (s === 0n && i === 0n) lede = <>Your smart account holds no USDC yet.</>;
   else if (s === 0n) lede = <>All of it is idle. The agent supplies it to {where} on its next tick.</>;
@@ -57,8 +60,10 @@ export function HolderView({ supplied, idle, route, riskCap, cold, txs, agent }:
 }
 
 /** Visitor: the best safe yield right now, and the one thing to do about it. */
-export function VisitorView({ route, installed, connecting, error, onConnect, agent }: {
+export function VisitorView({ route, loading, installed, connecting, error, onConnect, agent }: {
   route: ApiScoredPool | null;
+  /** The first scan has not come back yet: show a placeholder, not an empty figure. */
+  loading: boolean;
   installed: boolean | null;
   connecting: boolean;
   error: string | null;
@@ -69,7 +74,15 @@ export function VisitorView({ route, installed, connecting, error, onConnect, ag
     <section className="view" aria-label="Overview">
       <div>
         <h6 className="k">Best safe yield right now</h6>
-        <div className="big">{route ? formatApy(route.apyBps) : "—"}<em>APY</em></div>
+        {loading ? (
+          <div className="big" aria-busy="true">
+            <span className="sr-only">Loading the best yield</span>
+            <span className="skel skel-big" aria-hidden="true" />
+            <em>APY</em>
+          </div>
+        ) : (
+          <div className="big">{route ? formatApy(route.apyBps) : "—"}<em>APY</em></div>
+        )}
         <p className="lede">
           Every USDC pool on Stellar, watched. Your idle balance goes to the best one under the risk you choose,
           and never leaves your own smart account.

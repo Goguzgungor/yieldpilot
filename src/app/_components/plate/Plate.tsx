@@ -8,7 +8,8 @@ import { PlateEngine } from "./engine";
 import { formatApy, formatPct, stroopsToUsdc } from "../format";
 import { poolTitle, protocolLabel, shortLabel, tvlCompact } from "../poolNames";
 
-export type PlatePhase = "live" | "cold" | "offline";
+/** "loading": the first scan has not answered yet. "cold": it answered, and no survey exists. */
+export type PlatePhase = "live" | "loading" | "cold" | "offline";
 
 interface Props {
   pools: ApiScoredPool[];
@@ -125,14 +126,19 @@ export default function Plate(props: Props) {
 
   useEffect(() => { if (supplyKey) engineRef.current?.supply(); }, [supplyKey]);
 
-  // the first survey: the sweep keeps crossing the bare ground until pools arrive
+  // nothing to draw yet (the page is loading, or the first survey is running):
+  // the sweep keeps crossing the bare ground until pools arrive, so the plate
+  // reads as working, not empty. Loading is short, so its passes are quicker.
+  const sceneReady = !!geo;
   useEffect(() => {
-    if (phase !== "cold") return;
-    const run = () => { sweepLabelled.current = true; engineRef.current?.sweep(3800); };
+    // wait for the scene: a sweep asked for before the first layout draws nothing
+    if (!sceneReady || (phase !== "cold" && phase !== "loading")) return;
+    const [pass, every] = phase === "loading" ? [2200, 2600] : [3800, 4600];
+    const run = () => { sweepLabelled.current = true; engineRef.current?.sweep(pass); };
     run();
-    const id = setInterval(run, 4600);
+    const id = setInterval(run, every);
     return () => clearInterval(id);
-  }, [phase]);
+  }, [phase, sceneReady]);
 
   // ── labels: measure, then hang each on a leader long enough to clear the rest
   const measure = useCallback(() => {
@@ -207,7 +213,7 @@ export default function Plate(props: Props) {
           const labelTop = t.y - 6 - (measured.leads[selIdx] ?? 14) - 7 - (measured.heights[selIdx] ?? 16) - 6;
           return <div className="callout" style={{ left: t.x, top: plateLine, height: Math.max(0, labelTop - plateLine) }} />;
         })()}
-        <div ref={sweepRef} className="sweep">{phase === "cold" ? "SURVEYING" : "SCANNING"}</div>
+        <div ref={sweepRef} className="sweep">{phase === "loading" ? "READING" : phase === "cold" ? "SURVEYING" : "SCANNING"}</div>
       </div>
       {tip && <PoolTip {...tip} chosen={tip.pool.poolId === chosenId} holding={holding} />}
     </>
